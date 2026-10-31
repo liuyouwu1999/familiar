@@ -149,6 +149,7 @@ object PetHub {
         "doubleTap" to ShuffleBag(PetLines.DOUBLE_TAP),
         "stroke" to ShuffleBag(PetLines.STROKE),
         "joke" to ShuffleBag(PetLines.JOKE),
+        "feed" to ShuffleBag(PetLines.FEED),
         "ambient" to ShuffleBag(PetLines.AMBIENT),
         "fling" to ShuffleBag(PetLines.FLING),
         "farewell" to ShuffleBag(PetLines.FAREWELL),

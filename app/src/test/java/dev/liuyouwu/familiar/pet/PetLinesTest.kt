@@ -17,6 +17,7 @@ class PetLinesTest {
         assertTrue("greeting ≥8", PetLines.GREETING.size >= 8)   // 审查 N9：久别问候池断言
         assertTrue("thinking ≥6", PetLines.THINKING.size >= 6)
         assertTrue("searching ≥6", PetLines.SEARCHING.size >= 6)
+        assertTrue("feed ≥8", PetLines.FEED.size >= 8)   // P6 任务6：喂食池
     }
 
     @Test
@@ -33,8 +34,9 @@ class PetLinesTest {
             "greeting" to PetLines.GREETING,
             "thinking" to PetLines.THINKING,
             "searching" to PetLines.SEARCHING,
+            "feed" to PetLines.FEED,
         )
-        assertEquals(10, pools.size)   // 防漏：池总数变化时这里先炸，提醒补断言
+        assertEquals(11, pools.size)   // 防漏：池总数变化时这里先炸，提醒补断言
         pools.forEach { (name, list) ->
             assertEquals("池 $name 有重复台词", list.size, list.toSet().size)
         }

@@ -535,6 +535,18 @@ class PetOverlayService : Service() {
             wake()
             PetHub.say(PetHub.pickLine("joke"))
         }
+        row("喂一口") {
+            wake()
+            // 流式态守卫（摸摸头同款）：生成中不打断，喂食动作不进门也不计互动
+            val m = PetHub.state.value.mood
+            if (m != PetHub.Mood.THINKING && m != PetHub.Mood.SEARCHING &&
+                m != PetHub.Mood.SPEAKING
+            ) {
+                // 偷吃 token 表演（32 帧 one-shot，播完自动收束）+ 互动计数（spec §5 互动面）
+                PetHub.perform(PetHub.Mood.TOKEN, PetHub.pickLine("feed"))
+                scope.launch { PetBondStore.noteTouch() }
+            }
+        }
         row("来段表演") {
             wake()
             performRandom()
