@@ -1,0 +1,1 @@
+{"families":[{"match":"qwen3","capability":"NATIVE"},{"match":"qwen2.5","capability":"NATIVE"},{"match":"gemma","capability":"MARKER"},{"match":"glm","capability":"NATIVE"},{"match":"deepseek","capability":"NATIVE"}]}

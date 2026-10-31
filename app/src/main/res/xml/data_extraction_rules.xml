@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    云备份/设备迁移排除规则（API 31+）。
+    API Key 经 AndroidKeyStore AES-GCM 加密后存于 DataStore
+    （files/datastore/settings.preferences_pb），聊天设置亦在此目录——
+    整个 datastore/ 都不得进入云备份与设备迁移。
+    Room 聊天库（会话/消息/记忆）与拟人记忆文件（files/FamiliarMemory）
+    同样排除：数据只存手机，跨设备迁移走应用内 JSON 备份。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/" />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="FamiliarMemory" />
+        <exclude domain="external" path="update/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/" />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="FamiliarMemory" />
+        <exclude domain="external" path="update/" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动窗口配色：羊皮纸底 + 深木条（与 Compose 主题保持一致） -->
+    <color name="twl_window_background">#F6E7C8</color>
+    <color name="twl_wood_dark">#6B3F1D</color>
+</resources>

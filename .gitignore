@@ -1,0 +1,56 @@
+# Gradle
+.gradle/
+build/
+
+# Android Studio / IntelliJ
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 本机配置（SDK 路径因机器而异，不入库）
+local.properties
+
+# Kotlin
+.kotlin/
+
+# 签名文件与密码（绝不能入库）
+*.jks
+*.keystore
+keystore.properties
+
+# 系统杂项
+.DS_Store
+.superpowers/
+
+# 审计 P3 仓库卫生：设计截图/临时资产/AI 会话文件不入库
+.design-audit/
+# 发布产物与一次性生成脚本（APK/图标源图等，不入库）
+_release/
+*.wav
+.zcode/
+Gemini_Generated_Image_*.png
+# 内部工程文档（审计/规划），仅本地保留
+docs/
+
+# 调试产物（不入库）
+phone_db*.db*
+reqdump*.txt
+last_request.json
+captured_request.json
+familiar_sysprompt.txt
+ctl_*.png
+ctl_*.log
+e2e_*.png
+final*.png
+repro*.png
+build_smoke_*.png
+smoke*.png
+drag*.png
+ctl_full.log
+phone_live.log
+
+# 真机调试产物：设备拉下来的应用数据库副本含用户聊天数据，严禁入库（2026-10-30 审计 WARN）
+*.db
+*.db-wal
+*.db-shm

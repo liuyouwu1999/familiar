@@ -1,0 +1,15 @@
+{
+  "name": "中转站的大肥鱼",
+  "accent": "#D97757",
+  "avatar": "idle_0.png",
+  "head": "head.png",
+  "clips": {
+    "idle":  { "frames": [["idle_0.png", 1100], ["idle_1.png", 150]], "loop": true },
+    "busy":  { "frames": [["busy_0.png", 240], ["busy_1.png", 240], ["busy_2.png", 240], ["busy_3.png", 240]], "loop": true },
+    "done":  { "frames": [["done_0.png", 110], ["done_1.png", 110], ["done_2.png", 110], ["done_3.png", 110], ["done_4.png", 110], ["done_5.png", 400]], "loop": false },
+    "error": { "frames": [["error_0.png", 1000]], "loop": true },
+    "shy":   { "frames": [["shy_0.png", 1000]], "loop": true },
+    "turn":  { "frames": [["turn_0.png", 1000]], "loop": true },
+    "sleep": { "frames": [["sleep_0.png", 1000]], "loop": true }
+  }
+}

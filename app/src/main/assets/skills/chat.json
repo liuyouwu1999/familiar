@@ -1,0 +1,24 @@
+{
+  "id": "chat",
+  "name": "普通对话",
+  "description": "无固定人设的日常对话；建会话时可以从模板带一套系统提示词。",
+  "systemPrompt": {
+    "template": "你是{{user_name}}的对话伙伴。"
+  },
+  "tools": [
+    "web_search",
+    "get_current_time",
+    "read_file",
+    "write_file",
+    "list_files",
+    "http_get",
+    "clipboard_read",
+    "clipboard_write",
+    "open_url"
+  ],
+  "behaviors": {},
+  "paramsSchema": {},
+  "ui": {
+    "quickCommands": []
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "chat",
+  "name": "普通对话",
+  "description": "默认轻聊模式：无固定人设的普通对话，实际系统提示词由会话行 systemPrompt/模板覆盖。",
+  "systemPrompt": {
+    "template": "你是{{user_name}}的对话伙伴。"
+  },
+  "tools": [
+    "get_current_time",
+    "read_file",
+    "write_file",
+    "list_files",
+    "http_get",
+    "clipboard_read",
+    "clipboard_write",
+    "open_url"
+  ],
+  "behaviors": {},
+  "paramsSchema": {},
+  "ui": {
+    "quickCommands": []
+  }
+}

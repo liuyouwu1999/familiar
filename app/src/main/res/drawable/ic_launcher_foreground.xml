@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Familiar 像素小精灵前景：12x12 概念网格同源 rect 集（gen_icon.py 生成），
+     viewport 108、精灵居中且短边 66dp（adaptive 安全区内）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#1A0F24"
+        android:pathData="M48,21h12v6h-12z M42,27h6v6h-6z M60,27h6v6h-6z M36,33h6v6h-6z M66,33h6v6h-6z M30,39h6v6h-6z M72,39h6v6h-6z M24,45h6v6h-6z M78,45h6v6h-6z M24,51h6v6h-6z M36,51h12v6h-12z M60,51h12v6h-12z M78,51h6v6h-6z M24,57h6v6h-6z M78,57h6v6h-6z M24,63h6v6h-6z M78,63h6v6h-6z M24,69h6v6h-6z M78,69h6v6h-6z M30,75h6v6h-6z M72,75h6v6h-6z M36,81h36v6h-36z" />
+    <path
+        android:fillColor="#FFB74D"
+        android:pathData="M48,27h12v6h-12z M42,33h24v6h-24z M36,39h36v6h-36z M30,45h48v6h-48z M30,51h6v6h-6z M48,51h12v6h-12z M72,51h6v6h-6z M30,57h48v6h-48z M30,63h6v6h-6z M42,63h24v6h-24z M72,63h6v6h-6z M30,69h48v6h-48z M36,75h36v6h-36z" />
+    <path
+        android:fillColor="#FF8A65"
+        android:pathData="M36,63h6v6h-6z M66,63h6v6h-6z" />
+</vector>

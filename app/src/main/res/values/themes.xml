@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Familiar" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/twl_window_background</item>
+        <item name="android:statusBarColor">@color/twl_wood_dark</item>
+        <item name="android:navigationBarColor">@color/twl_wood_dark</item>
+        <!-- 全局 TextView 像素字体：覆盖 AndroidView 内的 TextView（如 Markdown 渲染） -->
+        <item name="android:fontFamily">@font/ark_pixel_16_zh_cn</item>
+        <item name="fontFamily">@font/ark_pixel_16_zh_cn</item>
+        <item name="android:textViewStyle">@style/PixelTextView</item>
+    </style>
+
+    <style name="PixelTextView" parent="android:Widget.Material.Light.TextView">
+        <item name="android:fontFamily">@font/ark_pixel_16_zh_cn</item>
+    </style>
+</resources>

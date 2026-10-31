@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自动备份排除规则（API < 31 的 fullBackupContent）。
+    与 data_extraction_rules.xml 同源：排除 DataStore（含 API Key）与聊天数据库，
+    云备份不带密钥、不带会话——数据只存手机，跨设备走应用内 JSON 备份。
+-->
+<full-backup-content>
+    <exclude domain="file" path="datastore/" />
+    <exclude domain="database" path="." />
+    <!-- 拟人记忆：个人事实 + 互动流水，与聊天同权，不进云备份 -->
+    <exclude domain="file" path="FamiliarMemory" />
+    <!-- 待装更新 APK 数十 MB，会顶爆 Auto Backup 25MB 配额导致整个备份失败 -->
+    <exclude domain="external" path="update/" />
+</full-backup-content>
