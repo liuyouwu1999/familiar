@@ -208,26 +208,33 @@ class PetSkinJsonTest {
     }
 
     @Test fun `内置橘资产petjson逐帧断言`() {
+        // P6 任务5：橘版跟量——与蓝版同一 clip 结构（批量换色管线产物，帧名相同、目录不同、
+        // 色相 -200° 对齐手工橘版基准 20°）。人设字段（name/accent/头像链）保持橘版原值
         val s = PetSkinJson.parse("orange", builtinJson("orange"), { true }, warnFn)!!
         assertEquals("中转站的大肥鱼", s.name)
         assertEquals("#D97757", s.accent)
         assertEquals("idle_0.png", s.avatarFile)
         assertEquals("head.png", s.headFile)
-        assertBuiltinClips(s)   // 橘皮未跟量（任务5）：仍是旧 7 clip 表，表演键缺失走回落
-        listOf(PetHub.Mood.DANCE, PetHub.Mood.WAVE, PetHub.Mood.JUMP, PetHub.Mood.HUM,
+        assertEquals(16, s.clips.getValue(PetHub.Mood.IDLE).frames.size)
+        assertEquals(16, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
+        assertEquals(false, s.clips.getValue(PetHub.Mood.SLEEP).loop)
+        val perfMoods = listOf(PetHub.Mood.DANCE, PetHub.Mood.WAVE, PetHub.Mood.JUMP, PetHub.Mood.HUM,
             PetHub.Mood.TAIL, PetHub.Mood.SNEAK, PetHub.Mood.TOKEN, PetHub.Mood.MEAL, PetHub.Mood.EAT)
-            .forEach { assertTrue("$it 橘皮应缺键", it !in s.clips) }
+        perfMoods.forEach { m ->
+            val c = s.clips[m]
+            assertTrue("$m 橘版应有表演 clip（one-shot）", c != null && !c.loop)
+        }
     }
 
     @Test fun `内置资产目录文件齐`() {
-        // PNG 落盘断言（直读 assets 本体）：AGP 单测 workingDir=app/ 模块目录，兼容从仓库根跑。
-        // 橘皮精确 18 文件（未跟量）；蓝皮 = 基础 18 + 248 帧 webp（16×7 + 8 + 32×4），双向集合断言
+        // PNG/webp 落盘断言（直读 assets 本体）：AGP 单测 workingDir=app/ 模块目录，兼容从仓库根跑。
+        // 蓝橘两皮同构：基础 18（旧 png 头像链/基态帧 + pet.json）+ 248 帧 webp（16×7 + 8 + 32×4），
+        // 双向集合断言，多文件/缺文件都红
         val base = listOf(java.io.File("src/main/assets/pets"), java.io.File("app/src/main/assets/pets")).first { it.isDirectory }
         val baseFiles = (
             (0..1).map { "idle_$it.png" } + (0..3).map { "busy_$it.png" } + (0..5).map { "done_$it.png" } +
                 listOf("error_0.png", "shy_0.png", "turn_0.png", "sleep_0.png", "head.png", "pet.json")
             ).toSet()
-        assertEquals("orange 目录文件集漂移", baseFiles, java.io.File(base, "orange").list()!!.toSet())
         val perfFiles = (
             (0..15).map { "dance_$it.webp" } + (0..15).map { "wave_$it.webp" } + (0..15).map { "jump_$it.webp" } +
                 (0..15).map { "eat_$it.webp" } + (0..15).map { "sneak_$it.webp" } + (0..15).map { "sleep_$it.webp" } +
@@ -235,6 +242,8 @@ class PetSkinJsonTest {
                 (0..31).map { "hum_$it.webp" } + (0..31).map { "meal_$it.webp" } +
                 (0..31).map { "tail_$it.webp" } + (0..31).map { "token_$it.webp" }
             ).toSet()
-        assertEquals("blue 目录文件集漂移", baseFiles + perfFiles, java.io.File(base, "blue").list()!!.toSet())
+        listOf("blue", "orange").forEach { color ->
+            assertEquals("$color 目录文件集漂移", baseFiles + perfFiles, java.io.File(base, color).list()!!.toSet())
+        }
     }
 }
