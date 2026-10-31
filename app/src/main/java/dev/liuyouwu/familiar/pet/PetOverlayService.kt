@@ -27,6 +27,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import dev.liuyouwu.familiar.FamiliarApp
 import dev.liuyouwu.familiar.MainActivity
 import dev.liuyouwu.familiar.R
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -56,6 +58,8 @@ import kotlin.random.Random
  *
  * 生命周期：设置里唯一的「桌宠」开关 = DataStore petEnabled。
  * 开（且已授权悬浮窗）→ MainActivity 拉起本服务；关（或长按菜单"躲起来"）→ 收窗自杀。
+ * 后台守卫（P6 任务2）：退后台默认收窗（detach 摘窗不自杀，服务与状态机照跑、回前台无缝重挂），
+ * petShowInBackground=true 才保留旧版跨应用常驻行为。
  * 她只说连上模型之后的事：PetHub.connected 为 false 时不出现。
  *
  * 窗口结构：鱼窗恒为鱼身大小（吞触摸区=鱼身矩形，无隐形吞触摸区）；泡窗不可触摸纯
@@ -111,6 +115,27 @@ class PetOverlayService : Service() {
         // 总开关（唯一开关，设置里那个按钮；长按菜单"躲起来"=写它）：关 → 收窗自杀
         scope.launch {
             repo.petEnabled.collect { on -> if (!on) detachAndStop() }
+        }
+        // 后台守卫（P6 任务2）：总开关开的前提下，退后台是否留窗由 petShowInBackground 决定。
+        // 收窗=detach()（摘鱼/泡/菜单三窗、停帧动画，服务不死；ambientLoop 的 root!=null 守卫
+        // 令隐藏期自动静默）；回前台或任一输入变化经本收集器重挂——复用挂载互斥锁 + 锁内复核
+        // （与 onStartCommand / 状态收集器兜底两个挂载点同一纪律，防双挂"幽灵鱼"）
+        scope.launch {
+            combine(
+                repo.petEnabled,
+                repo.petShowInBackground,
+                FamiliarApp.inForeground,
+                PetHub.state,
+            ) { enabled, showBg, fg, s ->
+                shouldBeVisible(s.connected, enabled, fg, showBg)
+            }.collect { visible ->
+                // 快路径：可见态已挂/不可见态已摘就别进锁（streaming 期状态帧高频）
+                if (visible == (root != null)) return@collect
+                attachMutex.withLock {
+                    if (visible && root == null && repo.petEnabled.first()) attach(repo.petColor.first())
+                    else if (!visible && root != null) detach()
+                }
+            }
         }
         // 台词称呼跟随设置
         scope.launch { repo.familiarAddress.collect { PetHub.address = it } }
@@ -950,6 +975,15 @@ class PetOverlayService : Service() {
     }
 
     companion object {
+        /** 悬浮窗可见判定（纯函数，JVM 可测）：连上模型 + 总开关开才存在；
+         *  退后台时按 petShowInBackground 决定去留（false=收窗，true=跨应用常驻） */
+        fun shouldBeVisible(
+            connected: Boolean,
+            enabled: Boolean,
+            foreground: Boolean,
+            showInBackground: Boolean,
+        ): Boolean = connected && enabled && (foreground || showInBackground)
+
         /** 「桌宠」开关打开（且已授权悬浮窗）时调用；服务常驻（STICKY） */
         fun start(ctx: Context) {
             ctx.startService(Intent(ctx, PetOverlayService::class.java))

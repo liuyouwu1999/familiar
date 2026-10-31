@@ -75,6 +75,7 @@ class SettingsRepository(private val context: Context) {
         private val KEY_PET_ENABLED = booleanPreferencesKey("pet_enabled")
         private val KEY_PET_POSITION = stringPreferencesKey("pet_position")
         private val KEY_PET_COLOR = stringPreferencesKey("pet_color")
+        private val KEY_PET_SHOW_IN_BACKGROUND = booleanPreferencesKey("pet_show_in_background")
         private val KEY_USE_SYSTEM_FONT = booleanPreferencesKey("use_system_font")
         private val KEY_CHAT_ROOM_ADDRESS = stringPreferencesKey("chat_room_address")
         private val KEY_CLOUD_VENDOR = stringPreferencesKey("cloud_vendor")
@@ -579,6 +580,18 @@ class SettingsRepository(private val context: Context) {
     suspend fun setPetColor(color: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_PET_COLOR] = color
+        }
+    }
+
+    /** 退后台显示：false（默认）= 应用退到后台自动收窗（回前台无缝回来，服务不死）；
+     *  true = 旧版常驻行为，其他应用上面也浮着 */
+    val petShowInBackground: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_PET_SHOW_IN_BACKGROUND] ?: false
+    }
+
+    suspend fun setPetShowInBackground(show: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PET_SHOW_IN_BACKGROUND] = show
         }
     }
 

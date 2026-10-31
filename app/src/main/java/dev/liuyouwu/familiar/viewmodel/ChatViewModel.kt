@@ -407,6 +407,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepository.setPetEnabled(enabled) }
     }
 
+    /** 退后台显示开关（null = 真值未回，UI 按默认关展示）：false = 退后台收窗 */
+    val petShowInBackground: StateFlow<Boolean?> = settingsRepository.petShowInBackground
+        .map { it as Boolean? }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun setPetShowInBackground(show: Boolean) {
+        viewModelScope.launch { settingsRepository.setPetShowInBackground(show) }
+    }
+
     /** 桌宠皮肤 id（assets/pets/ 或 filesDir/pets/ 目录名），人设/名称随皮肤（personaOf）映射 */
     val petColor: StateFlow<String> = settingsRepository.petColor
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "orange")

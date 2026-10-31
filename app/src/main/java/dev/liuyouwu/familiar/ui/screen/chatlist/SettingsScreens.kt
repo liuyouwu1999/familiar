@@ -91,6 +91,7 @@ internal fun SettingsDialog(
     val familiarAddress by chatViewModel.familiarAddress.collectAsStateWithLifecycle()
     val familiarSelfName by chatViewModel.familiarSelfName.collectAsStateWithLifecycle()
     val petEnabled by chatViewModel.petEnabled.collectAsStateWithLifecycle()
+    val petShowInBackground by chatViewModel.petShowInBackground.collectAsStateWithLifecycle()
     val petColor by chatViewModel.petColor.collectAsStateWithLifecycle()
     // 桌宠相伴统计行（B1 Task 7）：PetBondStore 快照流驱动，载盘/打点后自动刷新
     val petBondLine by viewModel.petBondLine.collectAsStateWithLifecycle()
@@ -423,8 +424,9 @@ internal fun SettingsDialog(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("桌宠", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                "连上模型后，大肥鱼常驻屏幕：可拖动、点她互动、长按有菜单，" +
-                                    "应用内外都是同一只（需系统悬浮窗权限）。菜单「躲起来」= 关闭本开关。" +
+                                "连上模型后，大肥鱼常驻屏幕：可拖动、点她互动、长按有菜单" +
+                                    "（需系统悬浮窗权限）。应用退到后台默认自动收起，想让她在其他应用上也露面看下方开关。" +
+                                    "菜单「躲起来」= 关闭本开关。" +
                                     "形象来自 codex-deepseek-pet（YunYueSama，github.com/YunYueSama/codex-deepseek-pet，经修改）",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
@@ -450,6 +452,27 @@ internal fun SettingsDialog(
                                 }
                             }
                         )
+                    }
+                    // 退后台显示（P6 任务2，默认关=退后台收窗）：桌宠关着时无意义不显示
+                    if (petEnabled == true) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("退到后台继续显示", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "关（默认）：切到别的应用她先躲起来，回到 Familiar 再出现。" +
+                                        "开：其他应用上面也浮着（旧版常驻行为）。",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            }
+                            Switch(
+                                checked = petShowInBackground ?: false,
+                                onCheckedChange = { chatViewModel.setPetShowInBackground(it) }
+                            )
+                        }
                     }
                     // 皮肤选择（P5 spec §5）：列表进页现扫，accent 色块 + name；选中写 setPetColor(skin.id)
                     val petSkins by chatViewModel.petSkins.collectAsStateWithLifecycle()
