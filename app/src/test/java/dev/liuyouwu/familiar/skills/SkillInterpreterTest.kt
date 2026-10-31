@@ -61,10 +61,11 @@ class SkillInterpreterTest {
         assertFalse("基础段不应含 MARKER 工具指令", prompt.contains("[搜索:"))
         assertFalse("基础段不应含搜索结果标记", prompt.contains("<<<搜索结果"))
         assertFalse("基础段不应含 NATIVE 工具指令段", prompt.contains("# 工具"))
-        // 装配字段直通（工具面 T6：tools 数组随 JSON 扩为五名——web_search + BASIC 四件）
+        // 装配字段直通（工具面 T6：tools 数组随 JSON 扩为五名——web_search + BASIC 四件；
+        // P6 任务4b 起课堂加 pet_react 六名：模型指挥桌宠表演）
         assertEquals("classroom", assembled.skillId)
         assertEquals(
-            listOf("web_search", "get_current_time", "read_file", "write_file", "list_files"),
+            listOf("web_search", "get_current_time", "read_file", "write_file", "list_files", "pet_react"),
             assembled.toolNames,
         )
         assertEquals("always-on", assembled.searchPolicy)

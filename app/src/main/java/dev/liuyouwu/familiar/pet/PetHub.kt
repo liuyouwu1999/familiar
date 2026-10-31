@@ -19,8 +19,18 @@ import kotlinx.coroutines.flow.update
 /** 桌宠状态中枢：ChatViewModel/ConnectionScreen 写，PetOverlayService 读渲染。
  *  全应用只有这一只桌宠（悬浮窗），应用内外同一位；会话级，进程重启归零。 */
 object PetHub {
-    /** THINKING/SEARCHING/SPEAKING 为 B1 会话状态（PetStateResolver 裁定，帧动画复用现有素材） */
-    enum class Mood { IDLE, BUSY, DONE, ERROR, SHY, TURN, SLEEP, THINKING, SEARCHING, SPEAKING }
+    /** THINKING/SEARCHING/SPEAKING 为 B1 会话状态（PetStateResolver 裁定，帧动画复用现有素材）；
+     *  DANCE..EAT 为表演动作（P6 任务4b，帧源 codex-deepseek-pet 图集，one-shot 播完回落） */
+    enum class Mood { IDLE, BUSY, DONE, ERROR, SHY, TURN, SLEEP, THINKING, SEARCHING, SPEAKING,
+        DANCE, WAVE, JUMP, HUM, TAIL, SNEAK, TOKEN, MEAL, EAT }
+
+    /** 表演动作全集（P6 任务4b）：皮肤可选实现——pet.json 缺键的皮肤（橘版未跟量）运行时
+     *  回落 IDLE clip 不崩，只是抽选表演时被过滤（performRandom 只抽真有帧的） */
+    val PERFORMANCE_MOODS: Set<Mood> = setOf(
+        Mood.DANCE, Mood.WAVE, Mood.JUMP, Mood.HUM, Mood.TAIL, Mood.SNEAK, Mood.TOKEN, Mood.MEAL, Mood.EAT,
+    )
+
+    fun isPerformance(mood: Mood): Boolean = mood in PERFORMANCE_MOODS
 
     data class PetState(
         val connected: Boolean = false,   // 连上过模型才出现（只说她能确定的事）
@@ -91,6 +101,23 @@ object PetHub {
     fun settle() = _state.update {
         if (it.mood == Mood.IDLE && it.bubble == null) it
         else it.copy(mood = Mood.IDLE, bubble = null)
+    }
+
+    /** 表演入口（P6 任务4b）：模型指挥（pet_react）/菜单「来段表演」/空闲微动作共用。
+     *  与 [say] 的区别：**故意绕过生成四态保持**——庆祝不该被 THINKING 顶掉；
+     *  演完回哪由 [finishPerformance] 按 resolver 持有态裁定，本入口只管开演 */
+    fun perform(action: Mood, line: String? = null) = _state.update {
+        if (!it.connected) it else it.copy(mood = action, bubble = line)
+    }
+
+    /** 表演收束（渲染层帧播完回调）：resolver 的裁定态若仍在流式驱动就恢复它，
+     *  否则回 IDLE 静默——表演只是插入演出，不抹掉会话状态 */
+    fun finishPerformance() {
+        val back = resolver.current
+        showState(
+            if (back == Mood.THINKING || back == Mood.SEARCHING || back == Mood.SPEAKING) back else Mood.IDLE,
+            null,
+        )
     }
 
     /** 状态机出口（resolver emitter 单出口）：resolver 裁定什么就写什么，不走 say 的保持分支；

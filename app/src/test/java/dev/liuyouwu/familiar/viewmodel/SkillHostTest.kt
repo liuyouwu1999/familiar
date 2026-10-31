@@ -1097,12 +1097,13 @@ class SkillHostTest {
     @Test
     fun `25 skill json toolNames wire into session tool specs`() = runBlocking {
         val h = harness(scope = CoroutineScope(coroutineContext))
-        // familiar：九名全量（web_search 在列——预算门随装；其余随 JSON 保序）
+        // familiar：十名全量（web_search 在列——预算门随装；其余随 JSON 保序；
+        // P6 任务4b 起尾追 pet_react：模型指挥桌宠表演）
         val familiar = h.host.sessionFor(conversation(40, tutorConfig = familiarConfig()))
         assertEquals(
             listOf(
                 "web_search", "get_current_time", "read_file", "write_file", "list_files",
-                "http_get", "clipboard_read", "clipboard_write", "open_url",
+                "http_get", "clipboard_read", "clipboard_write", "open_url", "pet_react",
             ),
             familiar.toolsSpecs.map { it.name },
         )
@@ -1112,12 +1113,13 @@ class SkillHostTest {
             listOf("web_search", "get_current_time", "read_file", "write_file", "list_files"),
             chatroom.toolsSpecs.map { it.name },
         )
-        // chat：八件不含 web_search（MARKER 模式 wire 侧 effectiveTools 另收敛，不在此断言面）
+        // chat：九件不含 web_search（MARKER 模式 wire 侧 effectiveTools 另收敛，不在此断言面）；
+        // P6 任务4b 起尾追 pet_react
         val chat = h.host.sessionFor(conversation(42, skillId = "chat"))
         assertEquals(
             listOf(
                 "get_current_time", "read_file", "write_file", "list_files",
-                "http_get", "clipboard_read", "clipboard_write", "open_url",
+                "http_get", "clipboard_read", "clipboard_write", "open_url", "pet_react",
             ),
             chat.toolsSpecs.map { it.name },
         )
@@ -1144,11 +1146,11 @@ class SkillHostTest {
         }
         val h = harness(scope = CoroutineScope(coroutineContext), mcpTools = listOf(fake))
         val specs = h.host.sessionFor(conversation(44, skillId = "chat")).toolsSpecs
-        // 追加位次：skill JSON tools 名单在前（chat 八件）、MCP 快照殿后
+        // 追加位次：skill JSON tools 名单在前（chat 九件，P6 任务4b 起 +pet_react）、MCP 快照殿后
         assertEquals(
             listOf(
                 "get_current_time", "read_file", "write_file", "list_files",
-                "http_get", "clipboard_read", "clipboard_write", "open_url",
+                "http_get", "clipboard_read", "clipboard_write", "open_url", "pet_react",
                 "mcp_demo__echo",
             ),
             specs.map { it.name },

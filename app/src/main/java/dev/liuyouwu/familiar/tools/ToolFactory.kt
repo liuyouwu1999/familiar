@@ -80,6 +80,7 @@ object ToolFactory {
         "clipboard_read" -> ClipboardReadTool(appContext)
         "clipboard_write" -> ClipboardWriteTool(appContext)
         "open_url" -> OpenUrlTool(appContext)
+        "pet_react" -> PetReactTool()   // P6 任务4b：本地表演，无 Context/网络依赖
         else -> null
     }
 }

@@ -270,7 +270,17 @@ class PetOverlayService : Service() {
                 }
                 index = f
                 PetSkinStore.frameBitmap(skin, clip.frames[f].first)?.let { iv.setImageBitmap(it) }   // null=坏图保持上一帧
-                if (!clip.loop && elapsed >= total) return  // 播完定住末帧
+                if (!clip.loop && elapsed >= total) {   // 播完定住末帧
+                    // 表演动作（P6 任务4b）：末帧停 500ms 自动收束（finishPerformance 按会话态回落）。
+                    // lambda 带 mood 守卫：期间状态变了（新帧播放器已接管）就不越权收束
+                    if (PetHub.isPerformance(currentMood)) {
+                        val played = currentMood
+                        mainHandler.postDelayed({
+                            if (currentMood == played) PetHub.finishPerformance()
+                        }, 500L)
+                    }
+                    return
+                }
                 val d = clip.frames[index].second
                 elapsed += d
                 mainHandler.postDelayed(this, d)
@@ -316,6 +326,22 @@ class PetOverlayService : Service() {
     }
 
     // ===== 气泡（独立悬浮窗）=====
+
+    /** 压扁弹回（P6 任务4b，调研阶段3）：甩远收手后的 squash & stretch——纯缩放动画器，
+     *  不依赖新素材帧（出处项目同款手感）。链：纵向压扁 0.62+横向鼓 1.18 → 过冲回弹 → 归位；
+     *  pivot 在鱼底（落地感）。scale 与 rotation 是不同属性，不与歪头/swing 互抢 */
+    private fun playSquashWobble() {
+        val iv = fishView ?: return
+        iv.pivotX = iv.width / 2f
+        iv.pivotY = iv.height.toFloat()
+        val sy = android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 0.62f, 1.12f, 0.95f, 1f)
+        val sx = android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.18f, 0.92f, 1.02f, 1f)
+        android.animation.ValueAnimator.ofPropertyValuesHolder(sx, sy).apply {
+            duration = 620
+            interpolator = DecelerateInterpolator()
+            start()
+        }
+    }
 
     private fun showBubble(text: String, sleep: Boolean) {
         winParams ?: return   // 挂载守卫：服务未挂窗时不冒泡
@@ -447,6 +473,17 @@ class PetOverlayService : Service() {
         }
     }
 
+    /** 随机表演（P6 任务4b）：从皮肤实际声明了 clip 的表演动作里抽一个——缺失键的皮肤
+     *  （橘版未跟量）不进抽选，抽中的必真演；一个都没有退回冷笑话台词 */
+    private fun performRandom() {
+        val options = PetHub.PERFORMANCE_MOODS.filter { currentSkin?.clips?.containsKey(it) == true }
+        if (options.isEmpty()) {
+            PetHub.say(PetHub.pickLine("joke"))
+            return
+        }
+        PetHub.perform(options[Random.nextInt(options.size)], PetHub.pickLine("tap"))
+    }
+
     private fun buildMenu(): LinearLayout {
         val menu = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -497,6 +534,10 @@ class PetOverlayService : Service() {
         row("讲个冷笑话") {
             wake()
             PetHub.say(PetHub.pickLine("joke"))
+        }
+        row("来段表演") {
+            wake()
+            performRandom()
         }
         row("躲起来") {
             // 与设置里「桌宠」开关同一体：关掉总开关（设置按钮同步变关），全应用收回
@@ -773,6 +814,8 @@ class PetOverlayService : Service() {
                             ) {
                                 PetHub.say(PetHub.pickLine("fling"), PetHub.Mood.TURN)
                             }
+                            // 压扁弹回（P6 任务4b）：纯视觉缩放，不改状态，流式期间也安全
+                            playSquashWobble()
                         }
                         // 先重钳+更新窗口，再按同步后的鱼位置保存（窗口顶=鱼顶），口径一致
                         syncWindowLayout()
@@ -836,7 +879,15 @@ class PetOverlayService : Service() {
                     PetHub.bondGreetingPending = false
                     PetHub.say(PetHub.pickLine("greeting"))
                 } else {
-                    PetHub.say(PetHub.pickLine("ambient"))
+                    // 空闲微动作（P6 任务4b，调研优先级1）：三分之一的闲聊拍改成无声小动作
+                    // （哼歌/晃尾巴）消解"傻浮着"；皮肤没实现（橘版未跟量）就照旧说话
+                    val micro = listOf(PetHub.Mood.HUM, PetHub.Mood.TAIL)
+                        .filter { currentSkin?.clips?.containsKey(it) == true }
+                    if (micro.isNotEmpty() && Random.nextInt(3) == 0) {
+                        PetHub.perform(micro[Random.nextInt(micro.size)])
+                    } else {
+                        PetHub.say(PetHub.pickLine("ambient"))
+                    }
                 }
             }
         }

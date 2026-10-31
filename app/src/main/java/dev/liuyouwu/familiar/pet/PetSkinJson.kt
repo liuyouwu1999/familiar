@@ -25,6 +25,10 @@ object PetSkinJson {
         "idle" to PetHub.Mood.IDLE, "busy" to PetHub.Mood.BUSY, "done" to PetHub.Mood.DONE,
         "error" to PetHub.Mood.ERROR, "shy" to PetHub.Mood.SHY, "turn" to PetHub.Mood.TURN,
         "sleep" to PetHub.Mood.SLEEP,
+        // 表演动作（P6 任务4b）：可选键，皮肤缺键即无此动作（运行时回落 IDLE、抽选被过滤）
+        "dance" to PetHub.Mood.DANCE, "wave" to PetHub.Mood.WAVE, "jump" to PetHub.Mood.JUMP,
+        "eat" to PetHub.Mood.EAT, "sneak" to PetHub.Mood.SNEAK, "token" to PetHub.Mood.TOKEN,
+        "meal" to PetHub.Mood.MEAL, "hum" to PetHub.Mood.HUM, "tail" to PetHub.Mood.TAIL,
     )
 
     private val DERIVED = mapOf(

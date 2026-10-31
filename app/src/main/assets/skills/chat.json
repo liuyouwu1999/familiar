@@ -14,7 +14,8 @@
     "http_get",
     "clipboard_read",
     "clipboard_write",
-    "open_url"
+    "open_url",
+    "pet_react"
   ],
   "behaviors": {},
   "paramsSchema": {},
