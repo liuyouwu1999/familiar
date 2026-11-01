@@ -20,9 +20,11 @@ import kotlinx.coroutines.flow.update
  *  全应用只有这一只桌宠（悬浮窗），应用内外同一位；会话级，进程重启归零。 */
 object PetHub {
     /** THINKING/SEARCHING/SPEAKING 为 B1 会话状态（PetStateResolver 裁定，帧动画复用现有素材）；
-     *  DANCE..EAT 为表演动作（P6 任务4b，帧源 codex-deepseek-pet 图集，one-shot 播完回落） */
+     *  DANCE..EAT 为表演动作（P6 任务4b，帧源 codex-deepseek-pet 图集，one-shot 播完回落）；
+     *  REVIEW 为复习泡专用态（学习画像 spec §6 chose-mood 方案）：showBubble/settle 按它
+     *  分派泡变体（12s 沉降 + 可点击），皮肤无此 clip 帧动画回落 IDLE 不崩 */
     enum class Mood { IDLE, BUSY, DONE, ERROR, SHY, TURN, SLEEP, THINKING, SEARCHING, SPEAKING,
-        DANCE, WAVE, JUMP, HUM, TAIL, SNEAK, TOKEN, MEAL, EAT }
+        DANCE, WAVE, JUMP, HUM, TAIL, SNEAK, TOKEN, MEAL, EAT, REVIEW }
 
     /** 表演动作全集（P6 任务4b）：皮肤可选实现——pet.json 缺键的皮肤（橘版未跟量）运行时
      *  回落 IDLE clip 不崩，只是抽选表演时被过滤（performRandom 只抽真有帧的） */
@@ -43,6 +45,10 @@ object PetHub {
 
     /** 单击桌宠 → 跳到主陪伴聊天框；AppNavigation 挂钩，未挂时退回说话 */
     var onOpenChat: (() -> Unit)? = null
+
+    /** 复习泡点击/菜单「复习一下」→ 跳到学习画像页；AppNavigation 挂钩（Task 10 注册），
+     *  未挂时 no-op——钩子先于路由存在，中间态点击不崩 */
+    var onOpenReview: (() -> Unit)? = null
 
     /** 用户自定义称呼（悬浮层随时回写），台词里的"老板"跟随它 */
     var address = "老板"
@@ -142,8 +148,9 @@ object PetHub {
     private val mainHandler = Handler(Looper.getMainLooper())
     fun postResolver(block: () -> Unit) = mainHandler.post(block)
 
-    /** 台词洗牌袋：键=池名（PetLines 的十个池）。主线程单例，抽空自动重洗，
-     *  {addr} 称呼替换内建——根治 random() 直抽的"连抽重样" */
+    /** 台词洗牌袋：键=池名（PetLines 的十二个池）。主线程单例，抽空自动重洗，
+     *  {addr} 称呼替换内建——根治 random() 直抽的"连抽重样"。
+     *  池必须在此注册：漏注册的 key 首次 pickLine 会 getValue 抛 NoSuchKey */
     private val bags: Map<String, ShuffleBag> = mapOf(
         "tap" to ShuffleBag(PetLines.TAP),
         "doubleTap" to ShuffleBag(PetLines.DOUBLE_TAP),
@@ -156,6 +163,7 @@ object PetHub {
         "greeting" to ShuffleBag(PetLines.GREETING),
         "thinking" to ShuffleBag(PetLines.THINKING),
         "searching" to ShuffleBag(PetLines.SEARCHING),
+        "review" to ShuffleBag(PetLines.REVIEW),
     )
 
     /** 按池名抽一句台词（称呼跟随 PetHub.address） */

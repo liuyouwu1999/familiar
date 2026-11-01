@@ -92,6 +92,7 @@ internal fun SettingsDialog(
     val familiarSelfName by chatViewModel.familiarSelfName.collectAsStateWithLifecycle()
     val petEnabled by chatViewModel.petEnabled.collectAsStateWithLifecycle()
     val petShowInBackground by chatViewModel.petShowInBackground.collectAsStateWithLifecycle()
+    val reviewReminder by chatViewModel.reviewReminder.collectAsStateWithLifecycle()
     val petColor by chatViewModel.petColor.collectAsStateWithLifecycle()
     // 桌宠相伴统计行（B1 Task 7）：PetBondStore 快照流驱动，载盘/打点后自动刷新
     val petBondLine by viewModel.petBondLine.collectAsStateWithLifecycle()
@@ -471,6 +472,24 @@ internal fun SettingsDialog(
                             Switch(
                                 checked = petShowInBackground ?: false,
                                 onCheckedChange = { chatViewModel.setPetShowInBackground(it) }
+                            )
+                        }
+                        // 复习拍提醒（学习画像 spec §6，默认开）：有到期课题时她闲置拍主动催
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("复习提醒", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "开（默认）：有到期的学习课题时，她空闲时会主动冒泡催你复习。",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            }
+                            Switch(
+                                checked = reviewReminder ?: true,
+                                onCheckedChange = { chatViewModel.setReviewReminder(it) }
                             )
                         }
                     }

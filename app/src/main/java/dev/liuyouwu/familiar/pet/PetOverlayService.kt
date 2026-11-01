@@ -32,7 +32,9 @@ import android.widget.TextView
 import dev.liuyouwu.familiar.FamiliarApp
 import dev.liuyouwu.familiar.MainActivity
 import dev.liuyouwu.familiar.R
+import dev.liuyouwu.familiar.data.local.AppDatabase
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
+import dev.liuyouwu.familiar.skills.profile.LearningReview
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -84,9 +86,12 @@ class PetOverlayService : Service() {
     // 泡与菜单是独立悬浮窗（不再塞进鱼窗里伸缩高度）：鱼窗恒为鱼身大小，
     // 泡/菜单作为独立窗口可以整体钳在屏幕内——鱼贴边时泡不再被裁出界。
     // 泡窗 FLAG_NOT_TOUCHABLE 纯展示（手势穿透，与应用内旧版"泡区不挡点击"一致）；
+    // 复习泡变体（mood=REVIEW）去掉该 flag：泡体可点（点击=收泡跳学习画像）；
     // 菜单窗可触摸。z 序：后 add 的在上（泡/菜单盖住鱼头顶的沉入部分）
     private var bubbleWin: BubbleView? = null
     private var bubbleWinParams: WindowManager.LayoutParams? = null
+    /** 当前泡是否复习变体（flags/点击监听只在创建路径装，变体切换走拆掉重建） */
+    private var bubbleIsReview = false
     private var menuWin: LinearLayout? = null
     private var menuWinParams: WindowManager.LayoutParams? = null
 
@@ -110,6 +115,16 @@ class PetOverlayService : Service() {
     /** 防烦联动（spec §3）：距上次任意气泡显示 <60s ambient 不发；DONE 时重置 ambient 计时器 */
     private var lastBubbleShownAt = 0L
     private var ambientResetAt = 0L
+
+    // ===== 学习画像复习拍（spec §6）=====
+    /** 到期查询/记催的 DAO：服务原本不碰库，懒加载（首次复习拍或菜单 gate 收集才建实例） */
+    private val profileDao by lazy { AppDatabase.getInstance(this).learningProfileDao() }
+    /** 复习提醒开关缓存（settings flow 收集维护，ambientLoop 每拍读） */
+    @Volatile private var reviewReminderOn = true
+    /** 有未归档学习条目（菜单「复习一下」gate + 复习拍门共用；buildMenu 主线程不可查库）。
+     *  唯一权威 = profileDao.hasActive() 流（Room 失效追踪响应式）：due() 只能证明
+     *  "有到期"，证明不了"没有未归档"，复习拍查询不回写 false */
+    @Volatile private var hasUnarchivedEntries = false
 
     override fun onCreate() {
         super.onCreate()
@@ -141,6 +156,11 @@ class PetOverlayService : Service() {
         }
         // 台词称呼跟随设置
         scope.launch { repo.familiarAddress.collect { PetHub.address = it } }
+        // 复习拍开关缓存（学习画像 spec §6）：ambientLoop 每拍读缓存，不查 DataStore
+        scope.launch { repo.reviewReminder().collect { reviewReminderOn = it } }
+        // 未归档学习条目存在性（菜单 gate + 复习拍门）：Room 失效追踪响应式维护，
+        // 条目建/归档即翻转，主线程菜单 gate 直接读 @Volatile
+        scope.launch { profileDao.hasActive().collect { hasUnarchivedEntries = it } }
         // 配色即时切换 → 皮肤切换（不重建窗口，只换帧序列 + 预热；帧源=皮肤包 assets/pets/）
         scope.launch {
             repo.petColor.collect { c ->
@@ -215,21 +235,23 @@ class PetOverlayService : Service() {
             restartFramePlayer()
         }
         animateTilt(if (s.mood == PetHub.Mood.ERROR) -10f else 0f)
+        val review = s.mood == PetHub.Mood.REVIEW   // 复习泡变体（spec §6）：12s 沉降 + 可点击
         if (s.bubble != null) {
             lastBubbleShownAt = System.currentTimeMillis()   // 防烦联动：任意气泡显示计时
-            showBubble(s.bubble, sleep = s.mood == PetHub.Mood.SLEEP)
+            showBubble(s.bubble, sleep = s.mood == PetHub.Mood.SLEEP, review = review)
         } else hideBubble()
         if (s.mood == PetHub.Mood.DONE) ambientResetAt = System.currentTimeMillis()
         // 沉降分级（spec §3）：4 秒定时只管 DONE/ERROR/互动泡（打盹 Zzz 不归位，等互动唤醒）；
         // 流式驱动态 THINKING/SEARCHING/SPEAKING 不排 settleJob——由状态迁移驱动沉降：
         // 多源搜索常 >4s、SPEAKING 段间隙更长，照稿会在中途被打回 IDLE 自败镜像目标。
-        // 排程前先 cancel 旧 job，SPEAKING→DONE 切回定时管时不残留旧调度
+        // 排程前先 cancel 旧 job，SPEAKING→DONE 切回定时管时不残留旧调度。
+        // 复习泡变体 12s：等用户点泡跳复习，4s 太短来不及点
         settleJob?.cancel()
         val streamingDriven = s.mood == PetHub.Mood.THINKING ||
             s.mood == PetHub.Mood.SEARCHING || s.mood == PetHub.Mood.SPEAKING
         if (s.bubble != null && s.mood != PetHub.Mood.SLEEP && !streamingDriven) {
             settleJob = scope.launch {
-                delay(4000)
+                delay(if (review) 12_000L else 4_000L)
                 PetHub.settle()
             }
         }
@@ -348,33 +370,54 @@ class PetOverlayService : Service() {
         }
     }
 
-    private fun showBubble(text: String, sleep: Boolean) {
+    /** 冒泡。review=true 为复习泡变体（spec §6，mood=REVIEW 专用）：
+     *  泡窗去 FLAG_NOT_TOUCHABLE（泡体可点，点击=收泡+跳学习画像），沉降 12s 由 render 管；
+     *  review=false 与旧版闲聊泡行为完全一致（flags 同款、手势穿透、原位更新路径原样） */
+    private fun showBubble(text: String, sleep: Boolean, review: Boolean = false) {
         winParams ?: return   // 挂载守卫：服务未挂窗时不冒泡
         closeMenu()
         val existing = bubbleWin
         if (existing != null) {
-            existing.text = text
-            // 完整短句（spec §4）：文本变了重新适配窗宽（12sp 起、超 4 行降 10sp、
-            // 钳 [鱼身宽, 60% 屏宽]），改写 LayoutParams.width 后 updateViewLayout 才生效
-            bubbleWinParams!!.width = existing.fitContent((screenW * 0.6f).toInt())
-            layoutBubbleParams(bubbleWinParams!!, existing, measuredHeightOf(existing), sleep)
-            runCatching { wm?.updateViewLayout(existing, bubbleWinParams!!) }
-            // 文本行数变化后 v.height 仍是旧文本的高（WRAP 窗口随后才重定高）：
-            // 等一帧新高度落地再重钳位一次，泡底贴鱼头的重叠量才准（审计中-1）
-            existing.post {
-                if (bubbleWin === existing) repositionOverlays()
+            if (review != bubbleIsReview) {
+                // 变体切换（复习泡↔闲聊泡）：拆掉重建走下方创建路径——flags 与点击监听只在
+                // 创建时装，原位更新路径改它们会碰闲聊泡的逐字不动约束
+                hideBubble()
+            } else {
+                existing.text = text
+                // 完整短句（spec §4）：文本变了重新适配窗宽（12sp 起、超 4 行降 10sp、
+                // 钳 [鱼身宽, 60% 屏宽]），改写 LayoutParams.width 后 updateViewLayout 才生效
+                bubbleWinParams!!.width = existing.fitContent((screenW * 0.6f).toInt())
+                layoutBubbleParams(bubbleWinParams!!, existing, measuredHeightOf(existing), sleep)
+                runCatching { wm?.updateViewLayout(existing, bubbleWinParams!!) }
+                // 文本行数变化后 v.height 仍是旧文本的高（WRAP 窗口随后才重定高）：
+                // 等一帧新高度落地再重钳位一次，泡底贴鱼头的重叠量才准（审计中-1）
+                existing.post {
+                    if (bubbleWin === existing) repositionOverlays()
+                }
+                return
             }
-            return
         }
         val b = BubbleView(this)
         b.text = text
+        if (review) {
+            // 复习泡点击（泡窗 root 视图）：收泡 + 跳学习画像。onOpenReview 由 AppNavigation
+            // 注册（Task 10），未挂时 no-op 不崩。settle 同步清态：防 12s 内旋转等 render 重放
+            // 把已点掉的泡复活
+            b.setOnClickListener {
+                hideBubble()
+                PetHub.settle()
+                PetHub.onOpenReview?.invoke()
+            }
+        }
         val p = WindowManager.LayoutParams(
             b.fitContent((screenW * 0.6f).toInt()),
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             // 不可触摸：泡区手势穿透（应用内旧版同语义）。alpha 0.99 绕开
-            // Android 12+ 对"全不透明透传窗"的不可信触摸限制
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            // Android 12+ 对"全不透明透传窗"的不可信触摸限制。
+            // 复习泡变体去掉 FLAG_NOT_TOUCHABLE：泡体收点击跳复习，泡外区域照常穿透
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                (if (review) 0 else WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE),
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -390,12 +433,14 @@ class PetOverlayService : Service() {
             }
         bubbleWin = b
         bubbleWinParams = p
+        bubbleIsReview = review
     }
 
     private fun hideBubble() {
         val b = bubbleWin ?: return
         bubbleWin = null
         bubbleWinParams = null
+        bubbleIsReview = false
         runCatching { wm?.removeView(b) }
     }
 
@@ -525,6 +570,14 @@ class PetOverlayService : Service() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
             runCatching { PetHub.openChat() }
+        }
+        // 复习一下（学习画像 spec §6）：有未归档条目才显示（@Volatile 缓存 gate，
+        // buildMenu 主线程不可查库）；点击跳学习画像——AppNavigation 路由 Task 10 注册，
+        // 未挂时 no-op 不崩
+        if (hasUnarchivedEntries) {
+            row("复习一下") {
+                PetHub.onOpenReview?.invoke()
+            }
         }
         row("摸摸头") {
             wake()
@@ -905,6 +958,31 @@ class PetOverlayService : Service() {
             // 防烦联动（spec §3）判一：DONE 后重置 ambient 计时器——会话刚收束的下一拍不开口，
             // 本次到点作废、重新起算（复位阈值取调度下限，之后还有 60s 气泡闸再兜一层）
             if (System.currentTimeMillis() - ambientResetAt < 45_000L) continue
+            // 复习拍（spec §6）：到期条目优先于闲聊；2h 静默期走 LearningReview.isNudgeable（T2 纯函数）。
+            // 门（评审核验补）：非 IDLE/有泡不踢——REVIEW 是显式 mood，say 走显式分支不保流式态，
+            // 流式中插话会把 THINKING/SEARCHING/SPEAKING 踢飞且无还原点（PetHub 对 SHY 有同款警告先例）。
+            // connected/root 也在门内：say 对未连接是 no-op 而 markReminded 照写库，不开门会把
+            // 催提醒白烧掉 2h 静默期（挂窗但未连接同理只在空中冒泡）。判一在其上，会话刚收束不催
+            if (reviewReminderOn && hasUnarchivedEntries) {
+                val ps = PetHub.state.value
+                if (root != null && ps.connected &&
+                    ps.mood == PetHub.Mood.IDLE && ps.bubble == null
+                ) {
+                    val now = System.currentTimeMillis()
+                    val due = profileDao.due(now).filter { LearningReview.isNudgeable(it, now) }
+                    if (due.isNotEmpty()) {
+                        val top = due.first()
+                        // 先记催再开口：一拍只取 first()，写库远在下一拍（45-90s 后）前完成，
+                        // isNudgeable 的 2h 闸防同条目跨拍重复催
+                        scope.launch { profileDao.markReminded(top.id, now) }
+                        PetHub.say(
+                            PetHub.pickLine("review").replace("课题", top.topic.take(8)),
+                            PetHub.Mood.REVIEW,
+                        )
+                        continue   // 本拍不闲聊
+                    }
+                }
+            }
             val s = PetHub.state.value
             // 判二：距上次任意气泡显示 <60s 不发——互动泡/镜像段/收束庆祝后不紧跟着闲聊
             if (root != null && s.connected && s.mood == PetHub.Mood.IDLE && s.bubble == null &&

@@ -76,6 +76,8 @@ class SettingsRepository(private val context: Context) {
         private val KEY_PET_POSITION = stringPreferencesKey("pet_position")
         private val KEY_PET_COLOR = stringPreferencesKey("pet_color")
         private val KEY_PET_SHOW_IN_BACKGROUND = booleanPreferencesKey("pet_show_in_background")
+        // 学习画像复习拍开关（spec §6）：桌宠是否用 ambient 拍催到期课题，默认开
+        private val KEY_REVIEW_REMINDER = booleanPreferencesKey("review_reminder_enabled")
         private val KEY_USE_SYSTEM_FONT = booleanPreferencesKey("use_system_font")
         private val KEY_CHAT_ROOM_ADDRESS = stringPreferencesKey("chat_room_address")
         private val KEY_CLOUD_VENDOR = stringPreferencesKey("cloud_vendor")
@@ -601,6 +603,17 @@ class SettingsRepository(private val context: Context) {
     suspend fun setPetShowInBackground(show: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_PET_SHOW_IN_BACKGROUND] = show
+        }
+    }
+
+    /** 复习拍提醒开关（学习画像 spec §6）：true（默认）= 桌宠闲置拍会催到期课题 */
+    fun reviewReminder(): Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REVIEW_REMINDER] ?: true
+    }
+
+    suspend fun setReviewReminder(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_REVIEW_REMINDER] = enabled
         }
     }
 
