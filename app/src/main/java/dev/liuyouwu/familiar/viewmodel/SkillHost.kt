@@ -273,6 +273,11 @@ class SkillHost(
         // 列表原样透传（prompt 逐字节不变，chatroom 成员路径零行为变化）；有材料 = 段落
         // 以 `\n\n` 拼到每个 RoleSpec.prompt 尾部（角色 run 的 systemOverride 生效）。
         val materialSection = MaterialSection.section(params["material"])
+        // 画像缝（Task 7，角色侧）：建室快照 skillParams.profile 经 chatroomParams 字符串值
+        // 透传的**已渲染段**（ProfileRenderer.render 产物，本层不渲染——同 plannerMaterial
+        // 口径）。键缺失（chatroom/无条目/无匹配/检索失败）= null = 零拼接（无 else 分支
+        // 污染）；有画像 = 与材料段并列拼到每个 RoleSpec.prompt 尾部（先材料、空行、后画像）。
+        val profileSection = params["profile"]?.takeIf { it.isNotBlank() }
         val baseRoles = chatRoomHooks.resolveRoles(conversation, skillId, assembled.behaviorReader)
         return RoundAssembly(
             session = session,
@@ -286,6 +291,11 @@ class SkillHost(
                 // 材料缝②（Task 5，planner 构造位）：传入已渲染段——planRound 只拼
                 // systemPrompt 尾部，不进调度请求的 user 输入（同一请求双份纯浪费）
                 plannerMaterial = materialSection,
+                // 画像缝（Task 7，planner 构造位）：已渲染段只进调度请求的 user 输入
+                //（planRound → RoundtablePlannerPrompt.userInput 的 profileSection 参，
+                // Task 6 已留位）——不进 systemPrompt（材料段已占 system 尾部，同请求
+                // 双份纯浪费）；chatroom 无此键＝null＝user 输入与现状逐字节一致
+                plannerProfileSection = profileSection,
                 // 圆桌风格门（Task 6）：仅圆桌走 RoundtablePlannerPrompt 专属文案
                 // （轮尾问句/≤N 句分派/无 point 问句兜底）；chatroom 不传＝false，
                 // 现场文案逐字保留（chatroom.json 同为 "scheduler": "planner"，零回归红线）
@@ -293,8 +303,9 @@ class SkillHost(
                 // P4 T4：每角色 run 终态回调（runOnChain 返回处）——VM 事件桥逐角色触发
                 onRoleTurnEnded = onRoleTurnEndedCallback,
             ),
-            roles = if (materialSection == null) baseRoles
-            else baseRoles.map { it.copy(prompt = "${it.prompt}\n\n$materialSection") },
+            roles = rolePromptTail(materialSection, profileSection)
+                ?.let { tail -> baseRoles.map { it.copy(prompt = "${it.prompt}\n\n$tail") } }
+                ?: baseRoles,
             scheduler = schedulerOf(assembled),
             openingMessage = chatRoomHooks.openingMessage(assembled.behaviorReader, params),
             // T1 承接④：回合级标题触发（run 级已装空）——每回合恰一次
@@ -728,6 +739,17 @@ internal fun roundtableMaxContextFloor(currentMaxContext: Int): Int =
 
 /** 保底下限值（spec §3「保底下限 8192」；历史预算兜底材料 ≤[MaterialSection.MAX_LEN] 字）。 */
 internal const val ROUNDTABLE_MIN_MAX_CONTEXT = 8192
+
+/**
+ * 角色 prompt 尾部段拼接（Task 7）：圆桌学习材料段（Task 5，MaterialSection.section
+ * 产物）与学习画像段（Task 7，ProfileRenderer.render 建室快照产物，两段均**已渲染**，
+ * 本层不二次渲染）按「材料 → 空行 → 画像」并列。两段皆 null（无 material 键且无
+ * profile 键——chatroom、新装、无条目/无匹配/检索失败）→ null：调用方 baseRoles
+ * 原样透传，prompt 逐字节不变（空路径纪律）。纯 JVM（RolePromptTailTest 钉死，
+ * 同 [roundtableMaxContextFloor] 先例）。
+ */
+internal fun rolePromptTail(materialSection: String?, profileSection: String?): String? =
+    listOfNotNull(materialSection, profileSection).joinToString("\n\n").ifEmpty { null }
 
 /**
  * 课堂流式显示过滤器（P4 T7，评审 P1-5 落点裁定：剥离在**显示层**——AgentSession

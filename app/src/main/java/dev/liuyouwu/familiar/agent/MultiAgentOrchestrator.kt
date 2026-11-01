@@ -70,6 +70,14 @@ class MultiAgentOrchestrator(
      */
     private val plannerMaterial: String? = null,
     /**
+     * 圆桌学习画像段（Task 7，SkillHost.roundFor 传入**已渲染段**——ProfileRenderer.render
+     * 建室快照产物；null = 无 profile 键，agent 层不 import skills.profile，渲染口径留在
+     * 装配层）：只进 [planRound] 调度请求的 **user 输入**（[RoundtablePlannerPrompt.userInput]
+     * 的 profileSection 参，Task 6 已留位）——不进 systemPrompt（材料段已占 system 尾部）、
+     * 不进角色 systemOverride。chatroom 构造位恒 null＝user 输入与现状逐字节一致。
+     */
+    private val plannerProfileSection: String? = null,
+    /**
      * 圆桌风格门（Task 6，spec §4/§7.4）：true = planRound 的 system/user 输入与
      * scheduleNote 走 [RoundtablePlannerPrompt] 圆桌专属文案（固定三角色表/轮尾
      * 问句规则/≤N 句分派/无 point 问句兜底）；false（缺省）= chatroom 现场原文案。
@@ -219,8 +227,9 @@ class MultiAgentOrchestrator(
         }
         return try {
             // user 输入（Task 6 分支）：圆桌走常量 userInput（Task 7 学习画像段经
-            // profileSection 参传入）；chatroom = 现场拼法逐字保留（零回归红线）
-            val plannerUserInput = if (roundtableStyle) RoundtablePlannerPrompt.userInput(transcript, profileSection = null)
+            // profileSection 参传入真参——已渲染段直传，本层不渲染）；chatroom = 现场
+            // 拼法逐字保留（零回归红线，画像段不进 chatroom 分支）
+            val plannerUserInput = if (roundtableStyle) RoundtablePlannerPrompt.userInput(transcript, profileSection = plannerProfileSection)
             else "群聊记录：\n$transcript\n\n输出本轮发言规划 JSON。"
             val outcome = loop.run(
                 input = listOf(

@@ -279,6 +279,26 @@ internal class ChatRoomSetupController(
         val params = com.google.gson.JsonObject().apply {
             if (roundtable) addProperty("topic", trimmedTopic)
             if (roundtable && trimmedMaterial.isNotEmpty()) addProperty("material", trimmedMaterial)
+            // 学习画像快照（Task 7）：圆桌建室时按课题词元检索活跃条目（T1 DAO allActive
+            // 已按 createdAt DESC 排序，即 ProfileMatcher 契约序）→ ProfileMatcher.select
+            // → ProfileRenderer.render；渲染 null（无条目/无匹配）不加键——读侧
+            // chatroomParams 字符串值透传，键缺失 = 段 null = 零拼接（与 material 键同一
+            // 缺席纪律，运行期不重查，每回合经 chatroomParams 新鲜透传本快照）。仅圆桌写
+            // （闲聊群无课题，同 material 键的 roundtable 门）。runCatching 宁缺不崩：
+            // 检索失败只 Log.w，不阻断建室（CancellationException 原样重抛，协作取消不吞）。
+            if (roundtable) {
+                runCatching {
+                    dev.liuyouwu.familiar.skills.profile.ProfileRenderer.render(
+                        dev.liuyouwu.familiar.skills.profile.ProfileMatcher.select(
+                            trimmedTopic,
+                            db.learningProfileDao().allActive(),
+                        )
+                    )?.let { addProperty("profile", it) }
+                }.onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    android.util.Log.w("LearningProfile", "画像快照失败", it)
+                }
+            }
             add("members", dev.liuyouwu.familiar.viewmodel.skillhooks.ChatRoomHooks.membersArray(members))
         }
         val convId = db.conversationDao().insertConversation(
