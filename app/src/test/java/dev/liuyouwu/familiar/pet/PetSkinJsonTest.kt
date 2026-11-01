@@ -189,11 +189,12 @@ class PetSkinJsonTest {
         assertEquals("#1976D2", s.accent)
         assertEquals("idle_0.png", s.avatarFile)   // 头像链仍指旧 png 首帧
         assertEquals("head.png", s.headFile)
-        assertEquals(listOf<Pair<String, Long>>("idle_0.webp" to 500L, "idle_1.webp" to 150L), s.clips.getValue(PetHub.Mood.IDLE).frames.take(2))
+        // P6 任务6b 节奏定稿：idle=定格 9s + 130ms 快速呼吸循环（平时不动偶尔动，动时流畅）
+        assertEquals(listOf<Pair<String, Long>>("idle_0.webp" to 9000L, "idle_1.webp" to 130L), s.clips.getValue(PetHub.Mood.IDLE).frames.take(2))
         assertEquals((0..3).map { "busy_$it.png" to 240L }, s.clips.getValue(PetHub.Mood.BUSY).frames)
         assertEquals(listOf("error_0.png" to 1000L), s.clips.getValue(PetHub.Mood.ERROR).frames)
         assertEquals(16, s.clips.getValue(PetHub.Mood.IDLE).frames.size)
-        assertEquals((0..7).map { "turn_$it.webp" to 140L }, s.clips.getValue(PetHub.Mood.TURN).frames)
+        assertEquals((0..7).map { "turn_$it.webp" to 160L }, s.clips.getValue(PetHub.Mood.TURN).frames)
         assertEquals(16, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
         assertEquals(false, s.clips.getValue(PetHub.Mood.SLEEP).loop)   // 入睡序列播完定住蜷姿
         // 表演组：9 个 one-shot，帧数 16/32 两档（显式清单——PERFORMANCE_MOODS 在 PetHub object 上，

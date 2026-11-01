@@ -22,7 +22,13 @@ object PetSkinStore {
     @Volatile private var assetManager: android.content.res.AssetManager? = null
     @Volatile private var filesRoot: File? = null
 
-    private val bitmapCache = LruCache<String, Bitmap>(40)
+    // 按字节计容（堆 1/8）：512px 帧 ARGB_8888 一张 1MB，按条数 40 上限时 32 帧动作播一圈
+    // 即把缓存挤穿 → 每帧主线程现解码（5-15ms/张）= 实测"一卡一卡"的直接来源（2026-11-01 真机）
+    private val bitmapCache = object : LruCache<String, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
+    ) {
+        override fun sizeOf(key: String, value: Bitmap): Int = maxOf(1, value.byteCount / 1024)
+    }
 
     fun init(appContext: Context) {
         assetManager = appContext.assets

@@ -256,6 +256,11 @@ class PetOverlayService : Service() {
         val skin = currentSkin
         if (skin == null) { Log.w("PetOverlay", "皮肤缺失 skinId=$skinId，保持现帧"); return }   // 绝不 !!
         val clip = skin.clips[currentMood] ?: skin.clips.getValue(PetHub.Mood.IDLE)
+        // 本 clip 整段后台预解码（IO）：512px 帧主线程现解码 5-15ms/张是卡顿源；
+        // 首帧仍同步解码兜底（协程未跑完时 tick 靠 LruCache 未命中路径现解，不空帧）
+        scope.launch(Dispatchers.IO) {
+            clip.frames.forEach { PetSkinStore.frameBitmap(skin, it.first) }
+        }
         val tick = object : Runnable {
             var index = 0
             var elapsed = 0L
@@ -891,11 +896,12 @@ class PetOverlayService : Service() {
                     PetHub.bondGreetingPending = false
                     PetHub.say(PetHub.pickLine("greeting"))
                 } else {
-                    // 空闲微动作（P6 任务4b，调研优先级1）：三分之一的闲聊拍改成无声小动作
-                    // （哼歌/晃尾巴）消解"傻浮着"；皮肤没实现（橘版未跟量）就照旧说话
+                    // 空闲微动作（P6 任务4b）：环境泡本身就是 45-90s 一拍，这里再 1/8 抽中
+                    // 才无声演一下（哼歌/晃尾巴）——平均约 6-12 分钟一次，点缀不抢戏
+                    // （1/3 实测太频繁，用户验收调低）；皮肤没实现（橘版未跟量）就照旧说话
                     val micro = listOf(PetHub.Mood.HUM, PetHub.Mood.TAIL)
                         .filter { currentSkin?.clips?.containsKey(it) == true }
-                    if (micro.isNotEmpty() && Random.nextInt(3) == 0) {
+                    if (micro.isNotEmpty() && Random.nextInt(8) == 0) {
                         PetHub.perform(micro[Random.nextInt(micro.size)])
                     } else {
                         PetHub.say(PetHub.pickLine("ambient"))
