@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 内置 skill 提示词组装快照（P4 删除批 B：util/TutorPrompts、RoundtablePrompts、
@@ -11,8 +12,8 @@ import org.junit.Test
  * task-6-report.md）。解析/拆条语义在 ContentProtocolTest / MarkerToolAdapterTest，
  * 装配回路由 SkillHostTest 钉死；这里只钉 skill JSON 模板的内容快照。
  *
- * 测试从 `src/test/resources/skills/<id>.json` 读取（与 assets 逐字节一致，
- * 一致性由任务末尾 bash diff 核对，同 SkillRegistryTest 口径）。
+ * 测试从 `src/test/resources/skills/<id>.json` 读取（与 assets 逐字节一致；
+ * roundtable 双副本一致性已由下方断言钉死，其余 id 同 SkillRegistryTest 口径）。
  */
 class BuiltinPromptSnapshotTest {
 
@@ -127,25 +128,40 @@ class BuiltinPromptSnapshotTest {
         }
     }
 
-    // ===== 学习圆桌三角色（迁自 TutorPromptsTest 的 RoundtablePrompts 四例）=====
+    // ===== 学习圆桌三角色（人设重写：声音样本 few-shot + 首句纪律 + 句数硬上限 + 禁式清单）=====
 
     @Test
-    fun `roundtable lecturer keeps tutoring discipline and anti-jargon line`() {
-        val p = roundtableRolePrompt("讲师")
-        assertTrue(p.contains("学习圆桌的讲师"))
-        assertTrue(p.contains("一次只讲一个概念"))
-        assertTrue(p.contains("不替学生做总结"))
-        assertTrue(p.contains("不直接铺完整答案"))
-        assertTrue(p.contains("抛一个问题"))
+    fun `roundtable role prompts carry voice sample first sentence caps and bans`() {
+        // 三角色共同骨架逐项钉死；句数硬上限：讲师 3 句、怀疑者/新手各 2 句
+        listOf("讲师" to "最多 3 句", "怀疑者" to "最多 2 句", "新手" to "最多 2 句").forEach { (name, cap) ->
+            val p = roundtableRolePrompt(name)
+            assertTrue("[$name] 缺少声音样本", p.contains("你的声音样本："))
+            assertTrue("[$name] 缺少首句纪律", p.contains("第一句必须"))
+            assertTrue("[$name] 缺少句数上限", p.contains(cap))
+            assertTrue("[$name] 缺少禁式清单", p.contains("禁式："))
+        }
     }
 
     @Test
-    fun `roundtable skeptic challenges to understand not to win`() {
+    fun `roundtable lecturer speaks like a senior and goes straight to the point`() {
+        val p = roundtableRolePrompt("讲师")
+        assertTrue(p.contains("你是学习圆桌的讲师"))
+        assertTrue(p.contains("说话像耐心的学长，不像播音员"))
+        assertTrue(p.contains("一次只讲一个概念"))
+        assertTrue(p.contains("不要自问自答"))
+        assertTrue(p.contains("禁止任何开场白"))
+        assertTrue(p.contains("不说「好问题」「没错」「首先」「让我们」"))
+        assertTrue(p.contains("这个实验翻车在对照组"))
+    }
+
+    @Test
+    fun `roundtable skeptic argues to clarify not to oppose`() {
         val p = roundtableRolePrompt("怀疑者")
-        assertTrue(p.contains("爱追问的同学"))
-        assertTrue(p.contains("凭什么"))
-        assertTrue(p.contains("追问是为了搞懂，不是为了赢"))
-        assertTrue(p.contains("被说服时明确认错"))
+        assertTrue(p.contains("爱抬杠但为了搞清楚"))
+        assertTrue(p.contains("这个我认"))
+        assertTrue(p.contains("第一句必须直接指出问题或给出反例"))
+        assertTrue(p.contains("不为反对而反对"))
+        assertTrue(p.contains("样本才 30 个人也敢下结论"))
     }
 
     @Test
@@ -153,8 +169,19 @@ class BuiltinPromptSnapshotTest {
         val p = roundtableRolePrompt("新手")
         assertTrue(p.contains("完全外行"))
         assertTrue(p.contains("打比方"))
-        assertTrue(p.contains("承认不懂"))
+        assertTrue(p.contains("承认不懂不丢人"))
         assertTrue(p.contains("不复述术语装懂"))
+        assertTrue(p.contains("不说「我可能问个很傻的问题」"))
+        assertTrue(p.contains("拿来干嘛的，陪跑"))
+    }
+
+    @Test
+    fun `roundtable test resource copy is byte identical to assets copy`() {
+        // 双副本纪律：JVM 测试实际读的是 test/resources 副本（无 AssetManager），
+        // 断言两副本一致，防止只改 assets 的假通过（单测工作目录=模块目录）
+        val resourceText = loadJson("roundtable")
+        val assetsText = File("src/main/assets/skills/roundtable.json").readText()
+        assertEquals(assetsText, resourceText)
     }
 
     @Test
