@@ -23,6 +23,7 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -98,6 +99,10 @@ class PetOverlayService : Service() {
     private var fishPx = 0
     private var screenW = 0
     private var screenH = 0
+    // 纵向钳制原点偏移（挂载后 calibrateContentBounds 用 rootWindowInsets 实测校准）：
+    // NO_LIMITS 后鱼窗请求坐标的挂载原点在状态栏下，物理底=screenH——不知道这个
+    // 偏移则纵向贴边数学全错（模拟器实测 originTop=136）。x 无偏移
+    private var originTop = 0
     private var skinId = "orange"
     private var currentSkin: PetSkin? = null
     private var currentMood: PetHub.Mood = PetHub.Mood.IDLE
@@ -218,7 +223,7 @@ class PetOverlayService : Service() {
         refreshScreenBounds()
         hideBubble()
         closeMenu()
-        syncWindowLayout()
+        calibrateContentBounds()
         render(PetHub.state.value)
     }
 
@@ -642,7 +647,7 @@ class PetOverlayService : Service() {
         val wp = winParams ?: return
         val r = root ?: return
         wp.x = PetWindowBounds.clampX(wp.x, screenW, fishPx)
-        wp.y = PetWindowBounds.clampY(wp.y, screenH, fishPx)
+        wp.y = PetWindowBounds.clampY(wp.y, originTop, screenH, fishPx)
         runCatching { wm?.updateViewLayout(r, wp) }
         repositionOverlays()
     }
@@ -669,6 +674,41 @@ class PetOverlayService : Service() {
             screenW = m.widthPixels
             screenH = m.heightPixels
         }
+        // 初始估计用系统状态栏高资源（±几 px）：恢复钳制发生在挂载前，若按 originTop=0
+        // 钳一次会把顶缘负坐标截损（-232→-96 不可逆）；挂载后 calibrate 实测覆盖
+        originTop = statusBarFallback()
+    }
+
+    private fun statusBarFallback(): Int = runCatching {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }.getOrDefault(0)
+
+    /** 挂载后实测校准纵向原点偏移：NO_LIMITS 悬浮窗的 rootWindowInsets 恒为 0（实测），
+     *  改用 locationOnScreen - 请求 y 作差（贴附原点=状态栏高，模拟器实测 136）。
+     *  必须在首次 layout 后测（否则 locationOnScreen 未定会测出假值）——
+     *  未 layout 时挂 GlobalLayout 监听兜底。校准完重钳一次。 */
+    private fun calibrateContentBounds() {
+        val r = root ?: return
+        if (r.isLaidOut && applyOriginCalibration(r)) return
+        val vto = r.viewTreeObserver
+        if (!vto.isAlive) return
+        vto.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                if (r.viewTreeObserver.isAlive) r.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                applyOriginCalibration(r)
+            }
+        })
+    }
+
+    private fun applyOriginCalibration(r: View): Boolean {
+        val wp = winParams ?: return false
+        val loc = IntArray(2)
+        r.getLocationOnScreen(loc)
+        originTop = (loc[1] - wp.y).coerceAtLeast(0)
+        Log.d("PetOverlay", "calibrate originTop=$originTop screenH=$screenH fishPx=$fishPx")
+        syncWindowLayout()
+        return true
     }
 
     /** 视图未走布局时（刚 setText/post 前）也能拿到实测高度。泡窗先经 fitContent 定档宽
@@ -708,13 +748,17 @@ class PetOverlayService : Service() {
             fishPx,
             fishPx,   // 窗口恒=鱼身大小（泡/菜单独立窗口，永不伸缩）
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            // NO_LIMITS 是贴边手感的前提：WM 会把无此 flag 的悬浮窗静默钳回屏内
+            // （模拟器 dumpsys 实证：请求 x=869 → 实际 frame x=695=屏宽-窗宽），
+            // 出屏补偿全成空文；加上后请求坐标才真实落地，坐标空间=整块物理屏
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 保存/恢复同一口径：窗口顶=鱼可视顶（恒成立，泡/菜单不再改变窗口高度）
             x = PetWindowBounds.clampX((fx * (screenW - fishPx)).toInt(), screenW, fishPx)
-            y = PetWindowBounds.clampY((fy * (screenH - fishPx)).toInt(), screenH, fishPx)
+            y = PetWindowBounds.clampY((fy * (screenH - fishPx)).toInt(), originTop, screenH, fishPx)
         }
         winParams = wp
 
@@ -743,6 +787,9 @@ class PetOverlayService : Service() {
         currentMood = PetHub.state.value.mood
         restartFramePlayer()
         installTouchListener(iv)
+        // 挂载即校准纵向原点（addView 后 rootWindowInsets 已可读）；insets 若未派发则下一帧补校
+        calibrateContentBounds()
+        if (originTop == 0) root?.post { calibrateContentBounds() }
         // 挂载后立即对齐当前状态（泡/姿态不丢）
         render(PetHub.state.value)
     }
@@ -860,7 +907,7 @@ class PetOverlayService : Service() {
                         // 消失（历史恶性 bug）
                         winParams?.let { wp ->
                             wp.x = PetWindowBounds.clampX(nx, screenW, fishPx)
-                            wp.y = PetWindowBounds.clampY(ny, screenH, fishPx)
+                            wp.y = PetWindowBounds.clampY(ny, originTop, screenH, fishPx)
                             runCatching { root?.let { wm?.updateViewLayout(it, wp) } }
                             repositionOverlays()   // 泡/菜单跟随，整体钳在屏内
                         }
