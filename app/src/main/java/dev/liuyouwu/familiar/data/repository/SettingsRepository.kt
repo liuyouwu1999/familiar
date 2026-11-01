@@ -107,6 +107,15 @@ class SettingsRepository(private val context: Context) {
             return servers.toMutableList().also { it[idx] = config }
         }
 
+        /**
+         * 坏条目过滤（纯函数，[parseMcpServers] 的防御步）：Gson Unsafe 分配绕过 Kotlin
+         * 构造器，存量 JSON 缺 name/url 字段时字段为 null（穿透非空类型，运行时才炸）。
+         * 缺 name 或 url 的条目整条丢弃——MCP 服务器无这两字段本就不可用，宁弃不崩。
+         * isNullOrEmpty 而非 == null：非空类型字段上的可空比较编译期告警噪声大。
+         */
+        internal fun sanitizeMcpServers(parsed: List<McpServerConfig>): List<McpServerConfig> =
+            parsed.filter { !it.name.isNullOrEmpty() && !it.url.isNullOrEmpty() }
+
     }
 
     // Theme mode
@@ -659,11 +668,18 @@ class SettingsRepository(private val context: Context) {
         return CryptoStore.decrypt(cipher)
     }
 
-    /** KEY_MCP_SERVERS 解析：空/损坏 JSON 一律回空列表（不因脏数据崩设置流，仅告警） */
+    /** KEY_MCP_SERVERS 解析：空/损坏 JSON 一律回空列表（不因脏数据崩设置流，仅告警）；
+     *  解析成功再过 [sanitizeMcpServers] 丢坏条目（Gson Unsafe 绕构造器，存量脏数据可带
+     *  null 字段穿透非空类型——2026-11-01 小米真机实证启动即 NPE 于 McpServerStatus） */
     private fun parseMcpServers(json: String?): List<McpServerConfig> {
         if (json.isNullOrEmpty()) return emptyList()
         return try {
-            MCP_GSON.fromJson<List<McpServerConfig>>(json, MCP_SERVERS_TYPE) ?: emptyList()
+            val parsed = MCP_GSON.fromJson<List<McpServerConfig>>(json, MCP_SERVERS_TYPE) ?: emptyList()
+            sanitizeMcpServers(parsed).also { clean ->
+                if (clean.size != parsed.size) {
+                    Log.w(TAG, "mcp_servers 含 ${parsed.size - clean.size} 条缺 name/url 的坏记录，已丢弃")
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "mcp_servers JSON 解析失败，按空列表处理", e)
             emptyList()

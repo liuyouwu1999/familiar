@@ -52,3 +52,34 @@ class SettingsRepositoryMcpUpsertTest {
         assertEquals(listOf(a, b), source)
     }
 }
+
+/**
+ * 坏条目防御（2026-11-01 小米真机启动 NPE 实证）：Gson Unsafe 绕过 Kotlin 构造器，
+ * 存量 JSON 缺字段时非空类型字段运行时为 null——sanitize 层宁弃不崩。
+ */
+class SettingsRepositoryMcpSanitizeTest {
+
+    @Test
+    fun `缺 name 或 url 的条目整条丢弃`() {
+        val parsed = listOf(
+            McpServerConfig(name = "good", url = "https://g.example.com"),
+        )
+        // Gson Unsafe 形态：非空类型字段运行时为 null——用反射置 null 模拟
+        val brokenName = McpServerConfig(name = "x", url = "https://n.example.com")
+        McpServerConfig::class.java.getDeclaredField("name").apply { isAccessible = true }.set(brokenName, null)
+        val brokenUrl = McpServerConfig(name = "y", url = "https://u.example.com")
+        McpServerConfig::class.java.getDeclaredField("url").apply { isAccessible = true }.set(brokenUrl, null)
+
+        val clean = SettingsRepository.sanitizeMcpServers(listOf(parsed[0], brokenName, brokenUrl))
+        assertEquals(listOf("good"), clean.map { it.name })
+    }
+
+    @Test
+    fun `全部合法原样通过`() {
+        val parsed = listOf(
+            McpServerConfig(name = "a", url = "https://a.example.com"),
+            McpServerConfig(name = "b", url = "https://b.example.com"),
+        )
+        assertEquals(parsed, SettingsRepository.sanitizeMcpServers(parsed))
+    }
+}
