@@ -27,6 +27,9 @@ interface LearningProfileDao {
     @Query("UPDATE learning_profile_entries SET remindedAt = :at WHERE id = :id")
     suspend fun markReminded(id: Long, at: Long)
 
+    @Query("UPDATE learning_profile_entries SET archived = 1 WHERE id = :id")
+    suspend fun archive(id: Long)
+
     @Query("SELECT EXISTS(SELECT 1 FROM learning_profile_entries WHERE archived = 0)")
     fun hasActive(): Flow<Boolean>
 }

@@ -140,7 +140,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
 
     // androidTest：MigrationTestHelper（room-testing）+ AndroidJUnitRunner（instrumentation
-    // 运行必需，缺 runner 编译能过、跑必挂 NoClassDefFoundError）
+    // 运行必需；实测仅上 classpath 不够，还须 defaultConfig 声明 testInstrumentationRunner）
     androidTestImplementation("androidx.room:room-testing:2.6.1")
     androidTestImplementation("androidx.test:runner:1.5.2")
 }
