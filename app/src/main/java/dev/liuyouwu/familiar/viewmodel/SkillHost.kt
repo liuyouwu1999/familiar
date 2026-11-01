@@ -18,6 +18,7 @@ import dev.liuyouwu.familiar.core.llm.model.StreamEvent
 import dev.liuyouwu.familiar.core.llm.wire.ToolMode
 import dev.liuyouwu.familiar.core.llm.wire.ToolSpec
 import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
+import dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity
 import dev.liuyouwu.familiar.pet.PetSkinStore
 import dev.liuyouwu.familiar.search.SearchEngine
 import dev.liuyouwu.familiar.search.BingCnEngine
@@ -32,6 +33,7 @@ import dev.liuyouwu.familiar.skills.SkillInterpreter
 import dev.liuyouwu.familiar.skills.SkillRegistry
 import dev.liuyouwu.familiar.skills.TypeInferer
 import dev.liuyouwu.familiar.skills.profile.MaterialSection
+import dev.liuyouwu.familiar.skills.profile.ReviewCoachPrompt
 import dev.liuyouwu.familiar.tools.AgentTool
 import dev.liuyouwu.familiar.tools.ToolFactory
 import dev.liuyouwu.familiar.tools.ToolRegistry
@@ -312,6 +314,40 @@ class SkillHost(
             roundTitleTrigger = { titleGenerator.trigger(conversation.id) },
         )
     }
+
+    // ---------------------------------------------------------------- 复习侧信道（学习画像 Task 10）
+
+    /**
+     * 复习教练侧信道路径（spec §6「不落库」）：每次调用新鲜装配一个 [ReviewChat]——
+     * **不建 Room 会话、不入库**。与六类型装配的关键差异（brief 裁决①"Read 现场"）：
+     * - 只造 [AgentLoop]（同源 [RunMarkers]：[RunMarkerTexts] 唯一字面来源；空
+     *   [ToolRegistry]——复习零工具面），**不造 [AgentSession]**：loop.run 直驱
+     *   （MultiAgentOrchestrator.planRound :184-249 先例）不收 session 参，而
+     *   AgentSession 的全部 run 入口（executeRun）无条件 persistProduced——持有它
+     *   只会是"接了落库线的死重"，与不落库红线背道而驰；
+     * - RunChain 用**公开构造**（RunChain.kt:13，非 session.acquireChain）：
+     *   conversationId 恒 "review"（不指向任何会话行），scope 为本 ReviewChat 专享
+     *   （cancel 只杀本复习链，不波及宿主）；
+     * - system = [ReviewCoachPrompt.system]（逐条出题 + JSON 收尾）；mode=NATIVE、
+     *   hooks 裸、maxTurns 缺省（无工具 turn 自然收束）、maxTokens 缺省（不发送——
+     *   planRound 同口径；loop 侧无 maxContext 预裁，复习会话短可接受，spec 已裁定）。
+     *
+     * 装配料复用既有六类型的获取方式：llm / settings（currentModel）即构造注入的
+     * 同一份（生产装配点 ChatViewModel.reviewSession，AgentEngineRuntime 同源）。
+     */
+    fun reviewSession(entries: List<LearningProfileEntryEntity>): ReviewChat = ReviewChat(
+        loop = AgentLoop(llm, ToolRegistry(), RunMarkers(
+            truncationMarker = RunMarkerTexts.TRUNCATION_MARKER,
+            truncationTail = RunMarkerTexts.TRUNCATION_TAIL,
+            noAnswerMarker = RunMarkerTexts.NO_ANSWER_MARKER,
+            noAnswerTail = RunMarkerTexts.NO_ANSWER_TAIL,
+            toolCancelled = RunMarkerTexts.TOOL_CANCELLED,
+            noClosingAnswerNote = RunMarkerTexts.NO_CLOSING_ANSWER_NOTE,
+        )),
+        chain = RunChain(REVIEW_CHAIN_ID, CoroutineScope(SupervisorJob() + Dispatchers.IO)),
+        system = ReviewCoachPrompt.system(entries.map { it.id to it.point }),
+        model = settings::currentModel,
+    )
 
     // ---------------------------------------------------------------- 装配
 
@@ -669,6 +705,9 @@ class SkillHost(
         /** skill JSON behaviors 值：调度降级名 / 恒开搜索（§5.3） */
         private const val SCHEDULER_ROUND_ROBIN = "round-robin"
         private const val POLICY_ALWAYS_ON = "always-on"
+
+        /** 复习链 conversationId（Task 10）：不指向任何会话行，仅作链隔离标识 */
+        const val REVIEW_CHAIN_ID = "review"
     }
 }
 
@@ -726,7 +765,73 @@ data class RoundAssembly(
 )
 
 /**
- * 圆桌 maxContext **保底下限**（Task 5 评审 Finding 2 裁定：SettingsRepository.DEFAULT_MAX_CONTEXT
+ * 复习教练侧信道会话（学习画像 Task 10，[SkillHost.reviewSession] 产物；spec §6
+ * 「不落库」）：持有 [AgentLoop] + 专享 [RunChain] + **内存历史**，ask 一次即一轮
+ * 问答。与六类型会话的本质差异：整条链路不过 AgentSession（executeRun 无条件
+ * persistProduced，AgentSession.kt:576）——消息只活在 [history]，Room messages 表
+ * 零写入（红线；SkillHostReviewSessionTest 以 InMemoryMessageStore 空表钉死）。
+ *
+ * - 历史累加（brief 裁决②落点）：mutableList 单调追加——每轮 ask 先补 user 行，
+ *   run 收线后把 [LoopOutcome.produced]（assistant + 可能的 TOOL_RESULT；本路径
+ *   零工具故只有 assistant，Thinking 块经 WireConverter 天然不上 wire）整段并入，
+ *   下一轮请求自带完整多轮上下文（input 传快照 toList，loop 内部再可变拷贝）。
+ * - ask 返回值 = 产出 ASSISTANT 行的 Text 块拼接（MultiAgentOrchestrator 的
+ *   textOf 同口径），供 VM 展示与 [dev.liuyouwu.familiar.skills.profile.ReviewResultParser]
+ *   解析收尾 JSON。
+ * - 取消语义：[cancel] 经 RunChain.cancel() 取消专享 scope——在飞 SSE 订阅随
+ *   AgentLoop.collectStream 的链作用域挂链即刻中断（P3 终审取消贯通），已收块照常
+ *   返回；VM onCleared 调用防泄漏（复习屏退出即释放，允许部分落账语义见 VM）。
+ * - run 级参数：mode=NATIVE + 空 tools（planRound 直驱先例同款）；model 取设置
+ *   现值；maxTokens 缺省不发送；maxTurns 缺省 8（无工具 turn 自然收束，护栏不达）。
+ */
+class ReviewChat internal constructor(
+    private val loop: AgentLoop,
+    private val chain: RunChain,
+    private val system: String,
+    private val model: () -> String,
+) {
+
+    /** 内存历史（不落库）：user 行与每轮 produced 顺序追加，进程内保留。 */
+    private val history = mutableListOf<AgentMessage>()
+
+    /** 复习链是否还活着（被 cancel 后为 false——VM 可据此拒绝后续发送）。 */
+    val isActive: Boolean get() = chain.scope.isActive
+
+    /**
+     * 一轮问答：追加 user 到内存历史 → loop.run 直驱（事件不外抛，复习不走流式
+     * UI）→ produced 并入历史 → 返回 assistant 正文。请求异常（网络/后端）原样
+     * 抛给调用方（VM 报错壳兜底）；调用方协程取消照常传播（CancellationException
+     * 不吞，AgentLoop.collectStream 同约定）。
+     */
+    suspend fun ask(userText: String): String {
+        history += AgentMessage(
+            id = "review-u${history.size}",
+            role = Role.USER,
+            blocks = listOf(ContentBlock.Text(userText)),
+        )
+        val outcome = loop.run(
+            input = history.toList(),
+            system = system,
+            tools = emptyList(),
+            hooks = object : AgentHooks {},   // 裸 hooks：复习不吃任何会话级上下文变换
+            chain = chain,
+            mode = ToolMode.NATIVE,
+            model = model,
+        ) { /* 侧信道事件不外抛（不驱动流式 UI，同 planRound 调度请求） */ }
+        history += outcome.produced
+        return outcome.produced
+            .filter { it.role == Role.ASSISTANT }
+            .flatMap { it.blocks.filterIsInstance<ContentBlock.Text>() }
+            .joinToString("\n") { it.text }
+            .trim()
+    }
+
+    /** 取消整条复习链（在飞 run 即刻中断；scope 释放，实例不可复用）。 */
+    fun cancel() = chain.cancel()
+}
+
+/**
+ * 圆桌 maxContext **保底下限**（Task 5，评审 Finding 2 裁定：SettingsRepository.DEFAULT_MAX_CONTEXT
  * 已是 131072，固定 { 8192 } 对默认用户是 16 倍收缩——语义改为取大）：设置现值低于
  * 8192 托到 8192（材料最多 2000 字的历史预算兜底），高于则原样放行（保底不封顶）。
  * [SkillHost.buildRoundtable] 经 assembleSession 的 maxContextOverride 传入；该供应商

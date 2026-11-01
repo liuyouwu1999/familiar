@@ -806,6 +806,39 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         participants: List<dev.liuyouwu.familiar.ui.screen.chatroom.ParticipantDraft>
     ): String? = chatRoomSetup.updateChatRoomParticipants(conversationId, participants)
 
+    // ===== 复习教练侧信道（学习画像 Task 10，spec §6 不落库）=====
+
+    /**
+     * 复习装配宿主（惰性单份）：与 [AgentSessionController.attachSessionFor] 同一
+     * 配方构建 [SkillHost]（registry/settings/repo/memoryStore/store/llm 全部复用
+     * 引擎同源件），仅作 [SkillHost.reviewSession] 的组装工厂——六类型会话装配路径
+     * （sessionFor/roundFor 的缓存与会话闭包）不被触碰；复习链零 store 路径
+     * （ReviewChat 只走 loop.run 直驱，Room messages 表零写入）。
+     */
+    private val reviewHost by lazy {
+        val engine = agentSession.engine
+        SkillHost(
+            registry = skillRegistry,
+            settings = engine.agentSettingsPort,
+            repo = engine.agentRepoPort,
+            memoryStore = memoryStore,
+            store = engine.agentStore,
+            llm = engine.agentLlm,
+            summarizer = { engine.compactSummarizer(it) },
+            agentFilesRoot = java.io.File(context.filesDir, "agent_files"),
+            appContext = engine.context,
+            agentOkHttp = engine.agentOkHttp,
+        )
+    }
+
+    /**
+     * 装配一节复习课（AppNavigation review 路由的 ReviewViewModel 经
+     * sessionFactory 引用）：不建 Room 会话、不入库，调用方（ReviewViewModel）
+     * 自持内存历史并负责 cancel（onCleared）。
+     */
+    fun reviewSession(entries: List<dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity>) =
+        reviewHost.reviewSession(entries)
+
     /** 导航层（AppNavigation）会话创建失败的统一上报口（P5 T4b：creator 壳删除后
      *  调用点直连会话服务，失败仍走 [error] 同一通道——列表页 snackbar/桌宠 ERROR 桥） */
     fun reportError(message: String) {

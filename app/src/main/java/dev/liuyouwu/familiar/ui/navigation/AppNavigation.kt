@@ -134,7 +134,28 @@ fun AppNavigation() {
                 }
             }
         }
-        onDispose { dev.liuyouwu.familiar.pet.PetHub.onOpenChat = null }
+        // 复习泡点击/菜单「复习一下」→ 复习路由（学习画像 Task 10，接 T9 的 null-safe
+        // 钩子；此前 no-op）。到期兜底（spec §6，brief 裁决④落点=注册 lambda）：
+        // due() 空 → allActive() 前 3；两条列表都按 3 条封顶（一节复习课的体量）。
+        // 全空不开屏只冒泡一句。挂根部与 onOpenChat 同理：停任意页长按桌宠都有复习入口。
+        dev.liuyouwu.familiar.pet.PetHub.onOpenReview = {
+            coroutineScope.launch {
+                val dao = dev.liuyouwu.familiar.data.local.AppDatabase
+                    .getInstance(activity).learningProfileDao()
+                val due = dao.due(System.currentTimeMillis())
+                    .ifEmpty { dao.allActive().take(3) }
+                    .take(3)
+                if (due.isNotEmpty()) {
+                    navController.navigate("review/${due.joinToString(",") { it.id.toString() }}")
+                } else {
+                    dev.liuyouwu.familiar.pet.PetHub.say("还没有可复习的要点，先去学习圈聊几轮吧")
+                }
+            }
+        }
+        onDispose {
+            dev.liuyouwu.familiar.pet.PetHub.onOpenChat = null
+            dev.liuyouwu.familiar.pet.PetHub.onOpenReview = null
+        }
     }
 
     NavHost(navController = navController, startDestination = "connection") {
@@ -335,6 +356,28 @@ fun AppNavigation() {
                     }
                 },
                 onSavePreset = { preset -> viewModel.savePersonaPreset(preset) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 快问快答复习屏（学习画像 Task 10）：entryIds 逗号串路由参数（brief 裁决④）。
+        // ReviewViewModel 每目的地一份（factory 注入 DAO + ChatViewModel 的复习装配口
+        // reviewSession——侧信道不落库，spec §6）；空 ids 兜底 VM 侧有「没有可复习要点」提示。
+        composable(
+            route = "review/{entryIds}",
+            arguments = listOf(navArgument("entryIds") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val entryIds = backStackEntry.arguments?.getString("entryIds")
+                ?.split(',')?.mapNotNull { it.toLongOrNull() }.orEmpty()
+            val reviewViewModel: dev.liuyouwu.familiar.ui.screen.review.ReviewViewModel = viewModel(
+                factory = dev.liuyouwu.familiar.ui.screen.review.ReviewViewModel.factory(
+                    dao = dev.liuyouwu.familiar.data.local.AppDatabase.getInstance(activity).learningProfileDao(),
+                    entryIds = entryIds,
+                    sessionFactory = chatViewModel::reviewSession,
+                )
+            )
+            dev.liuyouwu.familiar.ui.screen.review.ReviewScreen(
+                viewModel = reviewViewModel,
                 onBack = { navController.popBackStack() }
             )
         }
