@@ -435,9 +435,11 @@ class SkillHost(
             onPersisted = null,
             searchAllowed = searchAllowedOf(assembled.searchPolicy),
             titleTrigger = { },   // 同 chatroom：回合粒度
-            // Task 5：圆桌 maxContext 4096→8192——材料最多 2000 字，原预算会被挤爆
-            //（spec §3）；唯一传 override 的 buildX，其余五类型走 settings 供应商不变
-            maxContextOverride = { 8192 },
+            // Task 5 评审修订（Finding 2）：**保底下限**——settings 现值（默认 131072）
+            // 不收缩，低于 8192 托到 8192（材料最多 2000 字的历史预算兜底；spec §3 已
+            // 改写为「保底下限 8192」）。唯一传 override 的 buildX，其余五类型不变；
+            // 该供应商同时是圆桌 max_tokens 求值源（assembleSession 单一 effectiveMax）
+            maxContextOverride = { roundtableMaxContextFloor(settings.maxContext()) },
         )
     }
 
@@ -452,12 +454,20 @@ class SkillHost(
         titleTrigger: (RunResult) -> Unit,
         streamingTextFilter: ((String) -> String)? = null,
         /**
-         * maxContext 供应商覆写（Task 5）：null（缺省）= settings::maxContext 现状，
-         * 六类型共享行为不变；圆桌装配传 { 8192 }——材料最多 2000 字，4096 历史预算
-         * 会被挤爆（spec §3）。仅圆桌一个 buildX 传参，其余五类型零改动。
+         * maxContext 供应商覆写（Task 5，评审 Finding 2 后为**保底下限**语义）：
+         * null（缺省）= settings::maxContext 现状，六类型共享行为不变；圆桌装配传
+         * [roundtableMaxContextFloor]（设置现值与 8192 取大——DEFAULT_MAX_CONTEXT
+         * 已是 131072，固定 8192 会对默认用户 16 倍收缩）。仅圆桌一个 buildX 传参，
+         * 其余五类型零改动。**本供应商是 maxContext 与 maxTokens 的同一来源**
+         * （Finding 1 修订：ContextBuilder.reserveForOutput 硬契约「预留不得小于
+         * 实际输出上限」，两处各取来源会漂移超窗）。
          */
         maxContextOverride: (() -> Int)? = null,
     ): Pair<AgentSession, AgentLoop> {
+        // Finding 1 修订（单一来源收口）：maxContext 与 maxTokens 从同一 effectiveMax
+        // 求值——缺省 null 时即 settings::maxContext 原供应商引用，非圆桌类型两值
+        // 与改前逐位一致
+        val effectiveMaxContext = maxContextOverride ?: settings::maxContext
         val toolRegistry = ToolRegistry()
         // 工具面接线（T6）：skill JSON `tools` 数组（buildX 传 assembled.toolNames）——
         // 八件经 [ToolFactory.install] 注册（web_search 让渡不归工厂：预算门必须同装，
@@ -503,14 +513,16 @@ class SkillHost(
             // （register 覆盖写 + 管理器前缀命名已保不撞本地名，全量导出即全量可执行面）
             tools = toolRegistry.specs(toolNames) + mcpTools.map { ToolSpec(it.name, it.description, it.parametersJson) },
             mode = modeResolver,
-            // Task 5：maxContextOverride 非空时替换全局供应商（仅圆桌传 { 8192 }）；
-            // null（缺省）= settings::maxContext，六类型现状不变
-            maxContext = maxContextOverride ?: settings::maxContext,
+            // Task 5 评审修订：effectiveMaxContext 与下方 maxTokens 同一来源（见函数头注）
+            maxContext = effectiveMaxContext,
             summarizer = summarizer,
             titleTrigger = titleTrigger,
             model = settings::currentModel,
-            // T1 硬契约：与旧链三处 ctx/4 钳 256..8192 同源，禁止回落后端默认
-            maxTokens = { ContextBuilder.reserveForOutput(settings.maxContext()) },
+            // T1 硬契约：与旧链三处 ctx/4 钳 256..8192 同源，禁止回落后端默认。
+            // Finding 1 修订：reserveForOutput 求值自**同一** effectiveMaxContext——
+            // 圆桌曾出现 maxContext=8192（reserve=2048）而 max_tokens=reserveForOutput
+            // (settings)=8192 的漂移，本地小窗口模型会整请求超窗
+            maxTokens = { ContextBuilder.reserveForOutput(effectiveMaxContext()) },
             searchAllowed = searchAllowed,
             // B2-L1：链级采样参数供应商（openChain 单点求值播种——settings 端口缓存
             // 快照由 refreshSamplingCache 每链刷新，生效粒度=链）
@@ -697,6 +709,21 @@ data class RoundAssembly(
      */
     val roundTitleTrigger: () -> Unit,
 )
+
+/**
+ * 圆桌 maxContext **保底下限**（Task 5 评审 Finding 2 裁定：SettingsRepository.DEFAULT_MAX_CONTEXT
+ * 已是 131072，固定 { 8192 } 对默认用户是 16 倍收缩——语义改为取大）：设置现值低于
+ * 8192 托到 8192（材料最多 2000 字的历史预算兜底），高于则原样放行（保底不封顶）。
+ * [SkillHost.buildRoundtable] 经 assembleSession 的 maxContextOverride 传入；该供应商
+ * 同时是圆桌 max_tokens 的求值源（同源契约——ContextBuilder.reserveForOutput 硬契约
+ * 「预留不得小于实际输出上限」，assembleSession 内单一 effectiveMax 收口）。
+ * 纯函数（SkillHostTest 27 钉死三界：4096→8192、8192→8192、131072→131072）。
+ */
+internal fun roundtableMaxContextFloor(currentMaxContext: Int): Int =
+    maxOf(currentMaxContext, ROUNDTABLE_MIN_MAX_CONTEXT)
+
+/** 保底下限值（spec §3「保底下限 8192」；历史预算兜底材料 ≤[MaterialSection.MAX_LEN] 字）。 */
+internal const val ROUNDTABLE_MIN_MAX_CONTEXT = 8192
 
 /**
  * 课堂流式显示过滤器（P4 T7，评审 P1-5 落点裁定：剥离在**显示层**——AgentSession

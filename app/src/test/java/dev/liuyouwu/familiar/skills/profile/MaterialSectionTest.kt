@@ -18,4 +18,8 @@ class MaterialSectionTest {
     @Test fun `有则trim带口径前缀`() {
         assertEquals("圆桌学习材料（讨论以此为准，与材料冲突时以材料为准）：\nABC", MaterialSection.section(" ABC "))
     }
+
+    @Test fun `上限常量2000字`() {
+        assertEquals(2000, MaterialSection.MAX_LEN)
+    }
 }

@@ -15,6 +15,7 @@ import dev.liuyouwu.familiar.core.llm.model.StreamEvent
 import dev.liuyouwu.familiar.core.llm.model.Usage
 import dev.liuyouwu.familiar.core.llm.wire.ToolMode
 import dev.liuyouwu.familiar.core.llm.probe.ToolCapability
+import dev.liuyouwu.familiar.agent.ContextBuilder
 import dev.liuyouwu.familiar.agent.InMemoryMessageStore
 import dev.liuyouwu.familiar.agent.SamplingParams
 import dev.liuyouwu.familiar.agent.MultiAgentOrchestrator
@@ -1166,6 +1167,58 @@ class SkillHostTest {
         // eli5（空 toolNames）同样追加：MCP 快照不依赖 skill JSON 声明
         val eli5Specs = h.host.sessionFor(conversation(45, skillId = "eli5")).toolsSpecs
         assertEquals(listOf("mcp_demo__echo"), eli5Specs.map { it.name })
+    }
+
+    // ---------- ⑧c Task 5 评审修订：圆桌 maxContext 保底下限 + maxContext/maxTokens 同源 ----------
+
+    @Test
+    fun `27 roundtable maxContext floor is a floor not a cap`() {
+        // 纯函数钉（保底不封顶）：低设置托到 8192（兜底材料 ≤2000 字的历史预算）；
+        // 现值 8192 原样；131072（SettingsRepository.DEFAULT_MAX_CONTEXT 现值）不收缩
+        assertEquals(8192, roundtableMaxContextFloor(4096))
+        assertEquals(8192, roundtableMaxContextFloor(8192))
+        assertEquals("默认用户 131072 不得被固定值 16 倍收缩", 131072, roundtableMaxContextFloor(131072))
+    }
+
+    @Test
+    fun `28 roundtable session maxContext floored and role maxTokens from same source`() = runBlocking {
+        // 装配可测（runOnChain 收线把 effective maxContext 写进公开 SessionBreakdown；
+        // ScriptedLlm 记录 LlmRequest.maxTokens——planner 侧信道请求不带 maxTokens，
+        // calls[1] 恒为角色 run）：
+        // - 低设置 4096：圆桌 breakdown.maxContext=8192（保底托起），
+        //   角色请求 maxTokens=reserveForOutput(8192)=2048——与同一 effectiveMax 求值
+        //   （Finding 1 硬契约：预留不得小于实际输出上限，曾漂移成 2048 预留 vs 8192 输出）
+        // - 高设置 131072：不收缩（Finding 2 保底不封顶）；maxTokens=8192（钳上限）
+        // - 对照非圆桌 chatroom（不传 override）：4096/1024——两值与改前逐位一致
+        val low = harness(settings = FakeSettings(maxContextValue = 4096), scope = CoroutineScope(coroutineContext))
+        val lowConv = conversation(46, skillId = "roundtable", skillParams = """{"topic":"潮汐"}""")
+        low.llm.script("""[T]{"turns":[{"speaker":"讲师","point":"开场"}]}""", "[T]讲师开场。")
+        val lowRa = low.host.roundFor(lowConv)
+        low.store.append("46", AgentMessage(id = "u", role = Role.USER, blocks = listOf(ContentBlock.Text("潮汐怎么来的"))))
+        lowRa.orchestrator.runRound("46", low.store.list("46"), lowRa.roles, lowRa.scheduler) { }
+        val lowBd = requireNotNull(low.host.sessionFor(lowConv).events.value.contextBreakdown) { "收线后应有容量口径" }
+        assertEquals("低设置被托到保底", 8192, lowBd.maxContext)
+        assertEquals("maxTokens 与同一 effectiveMax 求值", ContextBuilder.reserveForOutput(lowBd.maxContext), low.llm.calls[1].maxTokens)
+
+        val high = harness(settings = FakeSettings(maxContextValue = 131072), scope = CoroutineScope(coroutineContext))
+        val highConv = conversation(47, skillId = "roundtable", skillParams = """{"topic":"潮汐"}""")
+        high.llm.script("""[T]{"turns":[{"speaker":"讲师","point":"开场"}]}""", "[T]讲师开场。")
+        val highRa = high.host.roundFor(highConv)
+        high.store.append("47", AgentMessage(id = "u", role = Role.USER, blocks = listOf(ContentBlock.Text("潮汐怎么来的"))))
+        highRa.orchestrator.runRound("47", high.store.list("47"), highRa.roles, highRa.scheduler) { }
+        val highBd = requireNotNull(high.host.sessionFor(highConv).events.value.contextBreakdown) { "收线后应有容量口径" }
+        assertEquals("高设置原样（保底不封顶）", 131072, highBd.maxContext)
+        assertEquals(ContextBuilder.reserveForOutput(highBd.maxContext), high.llm.calls[1].maxTokens)
+
+        val ctrl = harness(settings = FakeSettings(maxContextValue = 4096), scope = CoroutineScope(coroutineContext))
+        val ctrlConv = conversation(48, skillId = "chatroom", skillParams = membersJson())
+        ctrl.llm.script("""[T]{"turns":[{"speaker":"阿宅","point":"先接话"}]}""", "[T]阿宅的话")
+        val ctrlRa = ctrl.host.roundFor(ctrlConv)
+        ctrl.store.append("48", AgentMessage(id = "u", role = Role.USER, blocks = listOf(ContentBlock.Text("聊点什么"))))
+        ctrlRa.orchestrator.runRound("48", ctrl.store.list("48"), ctrlRa.roles, ctrlRa.scheduler) { }
+        val ctrlBd = requireNotNull(ctrl.host.sessionFor(ctrlConv).events.value.contextBreakdown) { "收线后应有容量口径" }
+        assertEquals("非圆桌不托底", 4096, ctrlBd.maxContext)
+        assertEquals(ContextBuilder.reserveForOutput(ctrlBd.maxContext), ctrl.llm.calls[1].maxTokens)
     }
 
     // ---------- ⑨ FamiliarParams 派生单元边界 ----------
