@@ -286,6 +286,10 @@ class SkillHost(
                 // 材料缝②（Task 5，planner 构造位）：传入已渲染段——planRound 只拼
                 // systemPrompt 尾部，不进调度请求的 user 输入（同一请求双份纯浪费）
                 plannerMaterial = materialSection,
+                // 圆桌风格门（Task 6）：仅圆桌走 RoundtablePlannerPrompt 专属文案
+                // （轮尾问句/≤N 句分派/无 point 问句兜底）；chatroom 不传＝false，
+                // 现场文案逐字保留（chatroom.json 同为 "scheduler": "planner"，零回归红线）
+                roundtableStyle = skillId == ROUNDTABLE,
                 // P4 T4：每角色 run 终态回调（runOnChain 返回处）——VM 事件桥逐角色触发
                 onRoleTurnEnded = onRoleTurnEndedCallback,
             ),

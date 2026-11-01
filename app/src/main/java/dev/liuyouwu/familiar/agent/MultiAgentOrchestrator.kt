@@ -25,6 +25,9 @@ import kotlinx.coroutines.isActive
  *   经 [AgentLoop.run] 单 turn 直驱（**不入库**、不驱动会话流式状态、事件不外抛
  *   ——侧信道）；解析失败/请求异常→**降级 [Scheduler.ROUND_ROBIN]**（roles 声明
  *   序轮换，语义收敛自 pickNextSpeaker 兜底），[RoundOutcome.plannerFailed] 置位。
+ *   Task 6：规划 system/user 输入与调度 note 按 [roundtableStyle] 分派——圆桌走
+ *   [RoundtablePlannerPrompt] 常量（轮尾问句规则/≤N 句分派/无 point 问句兜底），
+ *   chatroom 现场文案逐字保留（chatroom.json 同为 planner，门控即回归防线）。
  * - [Scheduler.ROUND_ROBIN]：直接按 roles 声明序各发言一次。
  *
  * 每角色 run（经 runOnChain 全走既有机制——流式发布/持久化钩子/收线/取消贯通）：
@@ -66,6 +69,16 @@ class MultiAgentOrchestrator(
      * 见下调注记：调度请求是全链路唯一无预裁的请求）。
      */
     private val plannerMaterial: String? = null,
+    /**
+     * 圆桌风格门（Task 6，spec §4/§7.4）：true = planRound 的 system/user 输入与
+     * scheduleNote 走 [RoundtablePlannerPrompt] 圆桌专属文案（固定三角色表/轮尾
+     * 问句规则/≤N 句分派/无 point 问句兜底）；false（缺省）= chatroom 现场原文案。
+     * **chatroom.json:18 与 roundtable.json 同为 `"scheduler": "planner"`**——闲聊
+     * 群也走 planRound/scheduleNote，本门控是 chatroom 行为回归的防线（false 路径
+     * 文案逐字保留现场原文，不抽常量）。装配：SkillHost.roundFor 按
+     * `skillId == ROUNDTABLE` 传 true，其余构造点不传＝false。
+     */
+    private val roundtableStyle: Boolean = false,
     /** 每角色 run 终态回调（P4 T4，SkillHost 构造注入）：（角色名, 本条产出正文）。 */
     private val onRoleTurnEnded: (roleName: String, text: String) -> Unit = { _, _ -> },
 ) {
@@ -174,20 +187,28 @@ class MultiAgentOrchestrator(
             input,
             if (plannerMaterial != null) PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL else PLANNER_TRANSCRIPT_MESSAGES,
         )
-        val systemPrompt = """
-            你是群聊主持人。阅读下面的群聊记录，为本轮规划一份完整的发言序列。
+        // systemPrompt（Task 6 分支）：圆桌 = RoundtablePlannerPrompt 常量（固定三角色表 +
+        // 轮尾问句规则 + point 正反例），材料段经 MaterialSection 拼尾部；chatroom = 现场
+        // 原文逐字保留（仅整体缩进 +4，trimIndent 产物逐字节不变——零回归红线，不抽常量）。
+        // 两分支各自拼一次材料段（二选一），无双拼。
+        val systemPrompt = if (roundtableStyle) {
+            RoundtablePlannerPrompt.system(maxTurnsPerRound, plannerMaterial)
+        } else {
+            """
+                你是群聊主持人。阅读下面的群聊记录，为本轮规划一份完整的发言序列。
 
-            可选角色：$names
+                可选角色：$names
 
-            规划原则：
-            1. 条数由内容决定：一句话能接住的轮次 1-2 条就够，值得讨论的轮次可以多几条；上限 $maxTurnsPerRound 条
-            2. 每条写清该角色这一句要围绕什么（一个具体的问题/反驳/补充/例子），不要写空泛的"回应一下"
-            3. 角色之间要互相接话：后一条最好回应前一条说过的内容，不各说各的
-            4. 如果话题已经聊透、应该轮到用户说话了，输出空数组 []
-            5. 只规划本轮，不要替用户安排发言
+                规划原则：
+                1. 条数由内容决定：一句话能接住的轮次 1-2 条就够，值得讨论的轮次可以多几条；上限 $maxTurnsPerRound 条
+                2. 每条写清该角色这一句要围绕什么（一个具体的问题/反驳/补充/例子），不要写空泛的"回应一下"
+                3. 角色之间要互相接话：后一条最好回应前一条说过的内容，不各说各的
+                4. 如果话题已经聊透、应该轮到用户说话了，输出空数组 []
+                5. 只规划本轮，不要替用户安排发言
 
-            只输出一行 JSON，格式：{"turns":[{"speaker":"角色名","point":"这条要说的要点"}]}
-        """.trimIndent() + plannerMaterial?.let { "\n\n$it" }.orEmpty()   // 材料段只进 system，不进 :189 的 user 输入
+                只输出一行 JSON，格式：{"turns":[{"speaker":"角色名","point":"这条要说的要点"}]}
+            """.trimIndent() + plannerMaterial?.let { "\n\n$it" }.orEmpty()   // 材料段只进 system，不进下方 user 输入
+        }
         val callerCancelWatch = currentCoroutineContext()[Job]?.let { callerJob ->
             Job(callerJob).also { watch ->
                 watch.invokeOnCompletion { cause ->
@@ -196,12 +217,16 @@ class MultiAgentOrchestrator(
             }
         }
         return try {
+            // user 输入（Task 6 分支）：圆桌走常量 userInput（Task 7 学习画像段经
+            // profileSection 参传入）；chatroom = 现场拼法逐字保留（零回归红线）
+            val plannerUserInput = if (roundtableStyle) RoundtablePlannerPrompt.userInput(transcript, profileSection = null)
+            else "群聊记录：\n$transcript\n\n输出本轮发言规划 JSON。"
             val outcome = loop.run(
                 input = listOf(
                     AgentMessage(
                         id = "planner-${chain.conversationId}",
                         role = Role.USER,
-                        blocks = listOf(ContentBlock.Text("群聊记录：\n$transcript\n\n输出本轮发言规划 JSON。")),
+                        blocks = listOf(ContentBlock.Text(plannerUserInput)),
                     )
                 ),
                 system = systemPrompt,
@@ -279,9 +304,16 @@ class MultiAgentOrchestrator(
      * 尾部调度 user 消息（收敛自 generateCharacterReply 的 scheduleNote）：以 user
      * 收尾绕开"末尾连续 assistant"类 400；规划要点非空时注入（发言方向由规划定，
      * 措辞自由发挥）。请求专用，不落库。
+     *
+     * Task 6 分支：圆桌（roundtableStyle=true）文本走 [RoundtablePlannerPrompt.scheduleNote]
+     * （≤N 句按角色分派：讲师 3/其余 2；无 point 问句兜底——ROUND_ROBIN 降级路径也带
+     * 轮尾问句）；chatroom 现场文案逐字保留。包装成 AgentMessage（id/role/blocks）两
+     * 分支共用，保持形状与返回类型不动。
      */
     private fun scheduleNote(turn: PlannedTurn): AgentMessage {
-        val text = if (turn.point.isNotBlank()) {
+        val text = if (roundtableStyle) {
+            RoundtablePlannerPrompt.scheduleNote(turn.role.name, turn.point)
+        } else if (turn.point.isNotBlank()) {
             "（群聊主持人提示：现在轮到「${turn.role.name}」发言。这一条的要点：${turn.point}。" +
                 "直接输出 ta 要说的话，不要输出名字前缀，要点自然融入不要照抄。）"
         } else {
@@ -307,8 +339,8 @@ class MultiAgentOrchestrator(
         /** 材料在场时的记录行数（Task 5：30→15，spec 风险节——调度请求无预裁，材料段占 systemPrompt 预算）。 */
         const val PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL = 15
 
-        /** 调度记录单行截断（buildRoomTranscript take(150) 同值）。 */
-        const val PLANNER_TRANSCRIPT_LINE_CLAMP = 150
+        /** 调度记录单行截断（Task 6：150→300，规划器看得更全；chatroom 共用同一常量，仅规划输入变全，无行为语义变化）。 */
+        const val PLANNER_TRANSCRIPT_LINE_CLAMP = 300
 
         /** turns 数组提取（pickRoundPlan 同款正则）。 */
         val TURNS_JSON_RE = Regex("\\{\\s*\"turns\"\\s*:\\s*(\\[[\\s\\S]*?\\])\\s*\\}")
