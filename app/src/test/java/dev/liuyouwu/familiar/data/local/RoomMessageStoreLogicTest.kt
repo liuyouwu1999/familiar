@@ -14,6 +14,7 @@ import dev.liuyouwu.familiar.data.local.dao.MessageExportRow
 import dev.liuyouwu.familiar.data.local.dao.MessageSearchRow
 import dev.liuyouwu.familiar.data.local.dao.ConversationMessageCount
 import dev.liuyouwu.familiar.data.local.dao.LastMessageRow
+import dev.liuyouwu.familiar.data.local.dao.LearningProfileDao
 import dev.liuyouwu.familiar.data.local.dao.PersonaPresetDao
 import dev.liuyouwu.familiar.data.local.dao.PromptTemplateDao
 import dev.liuyouwu.familiar.data.local.entity.ChatRoomParticipantEntity
@@ -453,6 +454,7 @@ class RoomMessageStoreLogicTest {
         override fun promptTemplateDao(): PromptTemplateDao = ThrowingPromptTemplateDao
         override fun chatRoomParticipantDao(): ChatRoomParticipantDao = throw UnsupportedOperationException()
         override fun personaPresetDao(): PersonaPresetDao = throw UnsupportedOperationException()
+        override fun learningProfileDao(): LearningProfileDao = throw UnsupportedOperationException()
         override fun createInvalidationTracker(): InvalidationTracker = InvalidationTracker(this, "messages")
         override fun createOpenHelper(config: androidx.room.DatabaseConfiguration) =
             throw UnsupportedOperationException("Room 管道 P3/真机验证")

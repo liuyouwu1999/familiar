@@ -8,11 +8,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.liuyouwu.familiar.data.local.dao.ChatRoomParticipantDao
 import dev.liuyouwu.familiar.data.local.dao.ConversationDao
+import dev.liuyouwu.familiar.data.local.dao.LearningProfileDao
 import dev.liuyouwu.familiar.data.local.dao.MessageDao
 import dev.liuyouwu.familiar.data.local.dao.PersonaPresetDao
 import dev.liuyouwu.familiar.data.local.dao.PromptTemplateDao
 import dev.liuyouwu.familiar.data.local.entity.ChatRoomParticipantEntity
 import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
+import dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity
 import dev.liuyouwu.familiar.data.local.entity.MessageEntity
 import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
 import dev.liuyouwu.familiar.data.local.entity.PromptTemplateEntity
@@ -28,9 +30,10 @@ import kotlinx.coroutines.launch
         MessageEntity::class,
         PromptTemplateEntity::class,
         ChatRoomParticipantEntity::class,
-        PersonaPresetEntity::class
+        PersonaPresetEntity::class,
+        LearningProfileEntryEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,6 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun promptTemplateDao(): PromptTemplateDao
     abstract fun chatRoomParticipantDao(): ChatRoomParticipantDao
     abstract fun personaPresetDao(): PersonaPresetDao
+    abstract fun learningProfileDao(): LearningProfileDao
 
     companion object {
         @Volatile
@@ -308,6 +312,29 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v17：学习画像条目表（新建表，无历史数据搬迁；DEFAULT 与实体 @ColumnInfo 逐字一致）
+        internal val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `learning_profile_entries` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `topic` TEXT NOT NULL,
+                        `point` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `sourceRoomId` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `lastReviewedAt` INTEGER NOT NULL,
+                        `nextReviewAt` INTEGER NOT NULL,
+                        `reviewCount` INTEGER NOT NULL DEFAULT 0,
+                        `remindedAt` INTEGER NOT NULL DEFAULT 0,
+                        `archived` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         /**
          * MIGRATION_15_16 的类型反推循环（纯函数，供 [Migration15_16LogicTest] 单测）：
          * 每行 (id, tutorConfig, isChatRoom) 经 [TypeInferer.infer] 六序判定得 skillId。
@@ -332,7 +359,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                         MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16
+                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17
                     )
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

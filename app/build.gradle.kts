@@ -24,6 +24,9 @@ android {
         targetSdk = 34
         versionCode = 5
         versionName = "1.0.0.0"
+        // androidTest 基建：不声明则测试 APK 落到旧版 android.test.InstrumentationTestRunner，
+        // JUnit4 用例报 "No tests found"（仅依赖 androidx.test:runner 不够）
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -73,6 +76,11 @@ android {
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
+    }
+
+    // 迁移测试读 schema 快照（MigrationTestHelper 按 assets 里的 17.json 校验迁移结果）
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 }
 
@@ -130,6 +138,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+
+    // androidTest：MigrationTestHelper（room-testing）+ AndroidJUnitRunner（instrumentation
+    // 运行必需，缺 runner 编译能过、跑必挂 NoClassDefFoundError）
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    androidTestImplementation("androidx.test:runner:1.5.2")
 }
 
 // Room schema 快照：迁移测试与 schema 演进追踪依赖它
