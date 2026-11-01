@@ -9,12 +9,14 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -193,9 +195,7 @@ class PetOverlayService : Service() {
         super.onConfigurationChanged(newConfig)
         // 旋转后屏幕尺寸变了：旧窗口坐标可能把鱼甩出屏外，重钳；泡/菜单收起后按当前
         // 状态恢复（Zzz 是长态泡，收了不恢复会整段消失；菜单不恢复）
-        val m = resources.displayMetrics
-        screenW = m.widthPixels
-        screenH = m.heightPixels
+        refreshScreenBounds()
         hideBubble()
         closeMenu()
         syncWindowLayout()
@@ -574,10 +574,34 @@ class PetOverlayService : Service() {
     private fun syncWindowLayout() {
         val wp = winParams ?: return
         val r = root ?: return
-        wp.x = wp.x.coerceIn(-fishPx * 45 / 100, screenW - fishPx * 55 / 100)
-        wp.y = wp.y.coerceIn(-fishPx / 4, (screenH - fishPx).coerceAtLeast(0))
+        wp.x = PetWindowBounds.clampX(wp.x, screenW, fishPx)
+        wp.y = PetWindowBounds.clampY(wp.y, screenH, fishPx)
         runCatching { wm?.updateViewLayout(r, wp) }
         repositionOverlays()
+    }
+
+    /** 真实显示区（含导航栏/刘海）：displayMetrics 是 app 显示区，heightPixels 不含
+     *  导航栏——贴底永远差一个导航栏高度（手势 ~24dp/三键 ~48dp），鱼尾贴不到物理底边 */
+    private fun refreshScreenBounds() {
+        runCatching {
+            val wmgr = getSystemService(WINDOW_SERVICE) as WindowManager
+            if (Build.VERSION.SDK_INT >= 30) {
+                val b = wmgr.maximumWindowMetrics.bounds
+                screenW = b.width()
+                screenH = b.height()
+            } else {
+                @Suppress("DEPRECATION") val d = wmgr.defaultDisplay
+                val m = DisplayMetrics()
+                @Suppress("DEPRECATION") d.getRealMetrics(m)
+                screenW = m.widthPixels
+                screenH = m.heightPixels
+            }
+        }.onFailure {
+            // 拿不到真实尺寸就退回 app 显示区，至少不崩
+            val m = resources.displayMetrics
+            screenW = m.widthPixels
+            screenH = m.heightPixels
+        }
     }
 
     /** 视图未走布局时（刚 setText/post 前）也能拿到实测高度。泡窗先经 fitContent 定档宽
@@ -599,9 +623,7 @@ class PetOverlayService : Service() {
         refreshSkin()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         fishPx = dp(140f)
-        val metrics = resources.displayMetrics
-        screenW = metrics.widthPixels
-        screenH = metrics.heightPixels
+        refreshScreenBounds()
 
         var fx = 0.92f
         var fy = 0.68f
@@ -624,8 +646,8 @@ class PetOverlayService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 保存/恢复同一口径：窗口顶=鱼可视顶（恒成立，泡/菜单不再改变窗口高度）
-            x = (fx * (screenW - fishPx)).toInt().coerceIn(-fishPx * 45 / 100, screenW - fishPx * 55 / 100)
-            y = (fy * (screenH - fishPx)).toInt().coerceIn(-fishPx / 4, (screenH - fishPx).coerceAtLeast(0))
+            x = PetWindowBounds.clampX((fx * (screenW - fishPx)).toInt(), screenW, fishPx)
+            y = PetWindowBounds.clampY((fy * (screenH - fishPx)).toInt(), screenH, fishPx)
         }
         winParams = wp
 
@@ -766,14 +788,12 @@ class PetOverlayService : Service() {
                     }
                     if (moved) {
                         // 标准偏移拖动：按住哪里，哪里就不跳（手指相对鱼身的位置全程不变）。
-                        // 钳制与 syncWindowLayout 同口径：横向可拖出约 3/4 身位、纵向 1/4，
+                        // 钳制统一走 PetWindowBounds（与 syncWindowLayout/attach 同口径），
                         // 都拖得回来。必须传窗口根视图：传子视图会更新失败、视图树写坏整窗
                         // 消失（历史恶性 bug）
                         winParams?.let { wp ->
-                            // 横向大幅出屏贴边（左 45%/右 55%，与应用内版手感一致）：
-                            // 精灵自带透明边距，钳浅了肉眼永远贴不到边
-                            wp.x = nx.coerceIn(-fishPx * 45 / 100, screenW - fishPx * 55 / 100)
-                            wp.y = ny.coerceIn(-fishPx / 4, (screenH - fishPx).coerceAtLeast(0))
+                            wp.x = PetWindowBounds.clampX(nx, screenW, fishPx)
+                            wp.y = PetWindowBounds.clampY(ny, screenH, fishPx)
                             runCatching { root?.let { wm?.updateViewLayout(it, wp) } }
                             repositionOverlays()   // 泡/菜单跟随，整体钳在屏内
                         }
