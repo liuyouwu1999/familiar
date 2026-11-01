@@ -406,7 +406,15 @@ class PetOverlayService : Service() {
             b.setOnClickListener {
                 hideBubble()
                 PetHub.settle()
-                PetHub.onOpenReview?.invoke()
+                // 终审 Important（Task 10 fix）：先拉 app 前台再导航——桌宠浮在别的应用/
+                // 桌面时 navigate 只改后台 Activity 的返回栈，点击看似无效，且下次手动开
+                // app 会被幽灵导航拉进复习屏。写法同「转到对话」先例（:566-572）；
+                // 钩子语义保持纯导航，invoke 可能指向已销毁 NavController，炸了就吞掉
+                startActivity(
+                    Intent(this, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                )
+                runCatching { PetHub.onOpenReview?.invoke() }
             }
         }
         val p = WindowManager.LayoutParams(
@@ -576,7 +584,13 @@ class PetOverlayService : Service() {
         // 未挂时 no-op 不崩
         if (hasUnarchivedEntries) {
             row("复习一下") {
-                PetHub.onOpenReview?.invoke()
+                // 终审 Important（Task 10 fix）：先拉前台再导航（写法同上「转到对话」）——
+                // 浮窗常驻其他应用/桌面时裸 navigate 只改后台返回栈；钩子炸了吞掉
+                startActivity(
+                    Intent(this, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                )
+                runCatching { PetHub.onOpenReview?.invoke() }
             }
         }
         row("摸摸头") {
