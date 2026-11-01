@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
+import dev.liuyouwu.familiar.skills.profile.MaterialSection
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
 
@@ -106,14 +107,15 @@ data class RoundtableRolePreset(
     val prompt: String,
 )
 
-/** 建室结果：模板 + 圆桌课题（闲聊群课题为空串）+ 成员草稿。
+/** 建室结果：模板 + 圆桌课题（闲聊群课题为空串）+ 成员草稿 + 圆桌可选学习材料
+ *  （Task 5；闲聊群恒 null，trim 推导在 VM 侧——本结果只承载原始表单值）。
  *  开场锚点与标题推导已随 P4 T3 迁 VM createChatRoomConversation（P5 T4b 前名
- *  createChatRoom；openingMessage 行为渲染 skill JSON 模板 / 课题即标题），
- *  本结果只承载原始表单值。 */
+ *  createChatRoom；openingMessage 行为渲染 skill JSON 模板 / 课题即标题）。 */
 data class ChatRoomSetupResult(
     val template: String,
     val topic: String,
-    val participants: List<ParticipantDraft>
+    val participants: List<ParticipantDraft>,
+    val material: String? = null
 ) {
     val isRoundtable: Boolean get() = template == ChatRoomTemplates.ROUNDTABLE
 }
@@ -192,6 +194,8 @@ fun ChatRoomSetupScreen(
     // 模板选择（null = 未选，展示两张模板卡）；模板与会话课题一起跨进程重建保留
     var template by rememberSaveable { mutableStateOf<String?>(null) }
     var topic by rememberSaveable { mutableStateOf("") }
+    // 圆桌可选学习材料（Task 5）：原始输入全程持有（超限门槛在 canCreate，trim 在 VM 侧）
+    var material by rememberSaveable { mutableStateOf("") }
     // 表单已填角色用 rememberSaveable：旋转/进程重建不丢（审计 §1-5）
     var participants by rememberSaveable(stateSaver = ParticipantListSaver) {
         mutableStateOf(emptyList<ParticipantDraft>())
@@ -211,12 +215,13 @@ fun ChatRoomSetupScreen(
         }
     }
 
-    // 建室门槛：闲聊群 2-4 人；圆桌课题必填 + 三角色显示名非空
+    // 建室门槛：闲聊群 2-4 人；圆桌课题必填 + 三角色显示名非空 + 材料不超限（Task 5）
     val canCreate = when (template) {
         ChatRoomTemplates.CASUAL -> participants.size in 2..4
         ChatRoomTemplates.ROUNDTABLE ->
             topic.isNotBlank() && participants.isNotEmpty() &&
-                participants.all { it.displayName.isNotBlank() }
+                participants.all { it.displayName.isNotBlank() } &&
+                material.length <= MaterialSection.MAX_LEN
         else -> false
     }
 
@@ -246,7 +251,8 @@ fun ChatRoomSetupScreen(
                                     ChatRoomSetupResult(
                                         template = t,
                                         topic = topic,
-                                        participants = participants
+                                        participants = participants,
+                                        material = material.ifBlank { null }
                                     )
                                 )
                             }
@@ -284,6 +290,23 @@ fun ChatRoomSetupScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    // 可选学习材料（Task 5）：讨论以此为准；超限时创建按钮（顶栏✓）禁用，
+                    // 就在输入框下方直说差什么（门槛可见化，同"至少加 2 个角色"的模式）
+                    OutlinedTextField(
+                        value = material,
+                        onValueChange = { material = it },
+                        label = { Text("学习材料（可选，≤2000 字）") },
+                        placeholder = { Text("粘贴一段要围绕讨论的资料，留空则自由讨论") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                    if (material.length > MaterialSection.MAX_LEN) {
+                        Text(
+                            "学习材料超限（${material.length}/${MaterialSection.MAX_LEN} 字），精简后才能创建",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     Text(
                         "讲师先开场，怀疑者追问，新手帮大家暴露盲区。",
                         style = MaterialTheme.typography.bodySmall,

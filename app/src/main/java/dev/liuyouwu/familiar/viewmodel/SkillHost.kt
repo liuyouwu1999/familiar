@@ -31,6 +31,7 @@ import dev.liuyouwu.familiar.skills.QuickCommand
 import dev.liuyouwu.familiar.skills.SkillInterpreter
 import dev.liuyouwu.familiar.skills.SkillRegistry
 import dev.liuyouwu.familiar.skills.TypeInferer
+import dev.liuyouwu.familiar.skills.profile.MaterialSection
 import dev.liuyouwu.familiar.tools.AgentTool
 import dev.liuyouwu.familiar.tools.ToolFactory
 import dev.liuyouwu.familiar.tools.ToolRegistry
@@ -267,6 +268,12 @@ class SkillHost(
         val loop = requireNotNull(cachedLoop) { "AgentLoop 未随 sessionFor 缓存（装配序错误）" }
         val params = chatroomParams(conversation)
         val assembled = assembleOrThrow(skillId, params + templatePlaceholder(skillId), conversation)
+        // 材料缝①（Task 5，角色侧）：圆桌可选学习材料的统一渲染段（chatroomParams 已按
+        // 字符串值透传 skillParams.material，无需新存储通路）。null（无材料/空白）= 角色
+        // 列表原样透传（prompt 逐字节不变，chatroom 成员路径零行为变化）；有材料 = 段落
+        // 以 `\n\n` 拼到每个 RoleSpec.prompt 尾部（角色 run 的 systemOverride 生效）。
+        val materialSection = MaterialSection.section(params["material"])
+        val baseRoles = chatRoomHooks.resolveRoles(conversation, skillId, assembled.behaviorReader)
         return RoundAssembly(
             session = session,
             orchestrator = MultiAgentOrchestrator(
@@ -276,10 +283,14 @@ class SkillHost(
                 // 角色模型由 RoleSpec.model 覆盖，空则同样回落此供应商）
                 plannerModel = settings::currentModel,
                 maxTurnsPerRound = settings.chatRoomMaxReplies(),
+                // 材料缝②（Task 5，planner 构造位）：传入已渲染段——planRound 只拼
+                // systemPrompt 尾部，不进调度请求的 user 输入（同一请求双份纯浪费）
+                plannerMaterial = materialSection,
                 // P4 T4：每角色 run 终态回调（runOnChain 返回处）——VM 事件桥逐角色触发
                 onRoleTurnEnded = onRoleTurnEndedCallback,
             ),
-            roles = chatRoomHooks.resolveRoles(conversation, skillId, assembled.behaviorReader),
+            roles = if (materialSection == null) baseRoles
+            else baseRoles.map { it.copy(prompt = "${it.prompt}\n\n$materialSection") },
             scheduler = schedulerOf(assembled),
             openingMessage = chatRoomHooks.openingMessage(assembled.behaviorReader, params),
             // T1 承接④：回合级标题触发（run 级已装空）——每回合恰一次
@@ -424,6 +435,9 @@ class SkillHost(
             onPersisted = null,
             searchAllowed = searchAllowedOf(assembled.searchPolicy),
             titleTrigger = { },   // 同 chatroom：回合粒度
+            // Task 5：圆桌 maxContext 4096→8192——材料最多 2000 字，原预算会被挤爆
+            //（spec §3）；唯一传 override 的 buildX，其余五类型走 settings 供应商不变
+            maxContextOverride = { 8192 },
         )
     }
 
@@ -437,6 +451,12 @@ class SkillHost(
         searchAllowed: () -> Boolean,
         titleTrigger: (RunResult) -> Unit,
         streamingTextFilter: ((String) -> String)? = null,
+        /**
+         * maxContext 供应商覆写（Task 5）：null（缺省）= settings::maxContext 现状，
+         * 六类型共享行为不变；圆桌装配传 { 8192 }——材料最多 2000 字，4096 历史预算
+         * 会被挤爆（spec §3）。仅圆桌一个 buildX 传参，其余五类型零改动。
+         */
+        maxContextOverride: (() -> Int)? = null,
     ): Pair<AgentSession, AgentLoop> {
         val toolRegistry = ToolRegistry()
         // 工具面接线（T6）：skill JSON `tools` 数组（buildX 传 assembled.toolNames）——
@@ -483,7 +503,9 @@ class SkillHost(
             // （register 覆盖写 + 管理器前缀命名已保不撞本地名，全量导出即全量可执行面）
             tools = toolRegistry.specs(toolNames) + mcpTools.map { ToolSpec(it.name, it.description, it.parametersJson) },
             mode = modeResolver,
-            maxContext = settings::maxContext,
+            // Task 5：maxContextOverride 非空时替换全局供应商（仅圆桌传 { 8192 }）；
+            // null（缺省）= settings::maxContext，六类型现状不变
+            maxContext = maxContextOverride ?: settings::maxContext,
             summarizer = summarizer,
             titleTrigger = titleTrigger,
             model = settings::currentModel,

@@ -57,6 +57,15 @@ class MultiAgentOrchestrator(
     private val plannerModel: () -> String = { "" },
     /** 每轮发言条数上限（规划 prompt 的上限约束；语义承接设置项 chatRoomMaxReplies 默认 3）。 */
     private val maxTurnsPerRound: Int = 3,
+    /**
+     * 圆桌学习材料段（Task 5 材料缝②，SkillHost.roundFor 传入**已渲染段**——
+     * MaterialSection.section 产物；null = 无材料，agent 层不 import skills.profile，
+     * 渲染口径留在装配层）：只拼 [planRound] 的 systemPrompt 尾部（主持人规划以
+     * 材料为准），**不进调度请求的 user 输入**、不进角色 systemOverride——同一请求
+     * 双份 ~2000 字纯浪费。材料在场时调度 transcript 行数 30→15（[PLANNER_TRANSCRIPT_MESSAGES]
+     * 见下调注记：调度请求是全链路唯一无预裁的请求）。
+     */
+    private val plannerMaterial: String? = null,
     /** 每角色 run 终态回调（P4 T4，SkillHost 构造注入）：（角色名, 本条产出正文）。 */
     private val onRoleTurnEnded: (roleName: String, text: String) -> Unit = { _, _ -> },
 ) {
@@ -158,7 +167,13 @@ class MultiAgentOrchestrator(
         roles: List<RoleSpec>,
     ): List<PlannedTurn>? {
         val names = roles.joinToString("、") { it.name }
-        val transcript = transcriptOf(input)
+        // 材料在场时 transcript 行数 30→15（Task 5，spec 风险节落地）：调度请求是全链路
+        // 唯一无预裁的请求，材料段已占 systemPrompt 预算，记录行数同批下调防挤爆；
+        // 无材料 = 常量原值（现状逐字节一致）
+        val transcript = transcriptOf(
+            input,
+            if (plannerMaterial != null) PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL else PLANNER_TRANSCRIPT_MESSAGES,
+        )
         val systemPrompt = """
             你是群聊主持人。阅读下面的群聊记录，为本轮规划一份完整的发言序列。
 
@@ -172,7 +187,7 @@ class MultiAgentOrchestrator(
             5. 只规划本轮，不要替用户安排发言
 
             只输出一行 JSON，格式：{"turns":[{"speaker":"角色名","point":"这条要说的要点"}]}
-        """.trimIndent()
+        """.trimIndent() + plannerMaterial?.let { "\n\n$it" }.orEmpty()   // 材料段只进 system，不进 :189 的 user 输入
         val callerCancelWatch = currentCoroutineContext()[Job]?.let { callerJob ->
             Job(callerJob).also { watch ->
                 watch.invokeOnCompletion { cause ->
@@ -232,9 +247,10 @@ class MultiAgentOrchestrator(
 
     // ---------------------------------------------------------------- wire 形态
 
-    /** 紧凑群聊记录（收敛自 buildRoomTranscript）：末 N 行"名字: 内容"，长句截断。 */
-    private fun transcriptOf(messages: List<AgentMessage>): String =
-        messages.takeLast(PLANNER_TRANSCRIPT_MESSAGES).joinToString("\n") { m ->
+    /** 紧凑群聊记录（收敛自 buildRoomTranscript）：末 N 行"名字: 内容"，长句截断。
+     *  [maxRows] 缺省常量 30（现状）；圆桌材料在场时 [planRound] 传 15（Task 5）。 */
+    private fun transcriptOf(messages: List<AgentMessage>, maxRows: Int = PLANNER_TRANSCRIPT_MESSAGES): String =
+        messages.takeLast(maxRows).joinToString("\n") { m ->
             val text = m.blocks.filterIsInstance<ContentBlock.Text>()
                 .joinToString("\n") { it.text }.take(PLANNER_TRANSCRIPT_LINE_CLAMP)
             "${speakerNameOf(m)}: ${if (text.isBlank()) "[附件]" else text}"
@@ -287,6 +303,9 @@ class MultiAgentOrchestrator(
     private companion object {
         /** 调度请求的记录行数上限（buildRoomTranscript maxMessages=30 同值）。 */
         const val PLANNER_TRANSCRIPT_MESSAGES = 30
+
+        /** 材料在场时的记录行数（Task 5：30→15，spec 风险节——调度请求无预裁，材料段占 systemPrompt 预算）。 */
+        const val PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL = 15
 
         /** 调度记录单行截断（buildRoomTranscript take(150) 同值）。 */
         const val PLANNER_TRANSCRIPT_LINE_CLAMP = 150

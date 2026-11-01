@@ -772,7 +772,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         template: String,
         participants: List<dev.liuyouwu.familiar.ui.screen.chatroom.ParticipantDraft>,
         topic: String = "",
-    ): Long = chatRoomSetup.createChatRoomConversation(template, participants, topic)
+        material: String? = null,
+    ): Long = chatRoomSetup.createChatRoomConversation(template, participants, topic, material)
 
     fun updateChatRoomMaxReplies(count: Int) {
         val coerced = count.coerceIn(1, 6)

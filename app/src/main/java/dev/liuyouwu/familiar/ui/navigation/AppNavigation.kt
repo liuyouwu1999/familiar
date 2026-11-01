@@ -278,7 +278,8 @@ fun AppNavigation() {
                         val conversationId = chatViewModel.createChatRoomConversation(
                             template = result.template,
                             participants = result.participants,
-                            topic = result.topic
+                            topic = result.topic,
+                            material = result.material
                         )
                         navController.navigate("chat/$conversationId") {
                             popUpTo("chatlist")

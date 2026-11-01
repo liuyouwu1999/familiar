@@ -268,12 +268,17 @@ internal class ChatRoomSetupController(
         template: String,
         participants: List<dev.liuyouwu.familiar.ui.screen.chatroom.ParticipantDraft>,
         topic: String = "",
+        material: String? = null,
     ): Long = db.withTransaction {
         val roundtable = template == dev.liuyouwu.familiar.ui.screen.chatroom.ChatRoomTemplates.ROUNDTABLE
         val trimmedTopic = topic.trim()
+        // 圆桌可选学习材料（Task 5）：trim 后空白不加键（读侧 chatroomParams 字符串值
+        // 透传 → MaterialSection.section 空=无材料）；闲聊群无此概念，键只随圆桌写
+        val trimmedMaterial = material?.trim().orEmpty()
         val members = participants.mapIndexed { index, p -> p.toParticipantEntity(index) }
         val params = com.google.gson.JsonObject().apply {
             if (roundtable) addProperty("topic", trimmedTopic)
+            if (roundtable && trimmedMaterial.isNotEmpty()) addProperty("material", trimmedMaterial)
             add("members", dev.liuyouwu.familiar.viewmodel.skillhooks.ChatRoomHooks.membersArray(members))
         }
         val convId = db.conversationDao().insertConversation(
