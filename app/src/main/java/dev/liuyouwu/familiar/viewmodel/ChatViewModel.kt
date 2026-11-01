@@ -16,12 +16,20 @@ import dev.liuyouwu.familiar.core.llm.model.AgentMessage
 import dev.liuyouwu.familiar.core.llm.model.ContentBlock
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.core.llm.model.SenderInfo
+import dev.liuyouwu.familiar.core.llm.model.StreamEvent
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
+import dev.liuyouwu.familiar.core.llm.wire.ToolMode
+import dev.liuyouwu.familiar.core.llm.client.LlmRequest
 import dev.liuyouwu.familiar.data.remote.api.ModelsApi
 import dev.liuyouwu.familiar.data.remote.api.Transcriber
 import dev.liuyouwu.familiar.skills.QuickCommand
 import dev.liuyouwu.familiar.skills.SkillRegistry
 import dev.liuyouwu.familiar.skills.TypeInferer
+import dev.liuyouwu.familiar.skills.profile.Instruction
+import dev.liuyouwu.familiar.skills.profile.LearningReview
+import dev.liuyouwu.familiar.skills.profile.RoundtableSummaryParser
+import dev.liuyouwu.familiar.skills.profile.RoundtableSummaryTexts
+import dev.liuyouwu.familiar.skills.profile.SingleFlight
 import dev.liuyouwu.familiar.ui.model.MessageRenderModel
 import dev.liuyouwu.familiar.ui.model.UiMessage
 import dev.liuyouwu.familiar.data.repository.ChatRepository
@@ -808,6 +816,138 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _replyingTo.value = null
         _error.value = null
     }
+
+    // ===== 收桌小结（spec §2）：退出/切换双挂点触发 + 单飞防重 + 落库 + 画像落账 =====
+
+    /** 会话级在飞单飞：小结请求 5-30s 期间，任一挂点再次触发同一会话直接拒绝（不双跑）。 */
+    private val summaryFlight = SingleFlight()
+
+    /** 上一会话 id：切换缝判定源——LaunchedEffect(conversationId) 每次进会话都跑，
+     *  但「重进同一会话」不该触发小结，只有 prev != null && prev != newId 才补跑 prev。 */
+    private var previousConversationId: Long? = null
+
+    /**
+     * 会话切换缝（ChatScreen LaunchedEffect(conversationId) 首行调用）：记住本次会话，
+     * 若刚从另一个会话切来（prev != null && prev != newId），对 prev 补一次自动小结判定
+     * ——兜底用户不经 BackHandler 的切换路径（如列表直达）。重进同一会话不触发。
+     */
+    fun onConversationSwitched(newId: Long) {
+        val prev = previousConversationId
+        previousConversationId = newId
+        if (prev != null && prev != newId) maybeAutoSummarize(prev)
+    }
+
+    /** 退出/切换挂点（BackHandler/顶栏返回）：走节流（≥8 条新增 + 距上次小结 ≥1h）。 */
+    fun maybeAutoSummarize(roomId: Long) = summarizeInternal(roomId, force = false)
+
+    /** 列表长按「收桌总结」：跳过节流，单飞仍保留（spec §2）。 */
+    fun forceSummarize(roomId: Long) = summarizeInternal(roomId, force = true)
+
+    private fun summarizeInternal(roomId: Long, force: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        if (!summaryFlight.tryEnter(roomId)) return@launch   // 防重：在飞期间切会话不双跑（spec §2 必须）
+        try {
+            val conv = db.conversationDao().getConversationById(roomId) ?: return@launch
+            if (conv.skillId != TypeInferer.ROUNDTABLE) return@launch
+            val msgs = db.messageDao().getMessagesForConversationOnce(roomId)
+            // 小结基线（零 schema）：最后一条"圆桌小结"assistant 行之后的新增条数
+            val lastIdx = msgs.indexOfLast { it.role == "assistant" && it.senderDisplayName == "圆桌小结" }
+            val newCount = msgs.size - (lastIdx + 1)
+            if (!force) {
+                if (!RoundtableSummaryParser.shouldAutoSummarize(newCount)) return@launch
+                if (lastIdx >= 0 && System.currentTimeMillis() - msgs[lastIdx].timestamp < 60L * 60 * 1000) return@launch
+            }
+            // transcript 手工预裁（直驱链路无 ContextBuilder 预裁机器，必须自带）：
+            // 最近 60 行、每行截 300 字（compactSummarizer 同款口径）
+            val transcript = msgs.drop(maxOf(0, msgs.size - 60)).joinToString("\n") { m ->
+                val name = m.senderDisplayName ?: if (m.role == "user") "用户" else "AI"
+                "$name: ${m.content.take(300)}"
+            }
+            // 圆桌 title=课题（建室口径），按课题收画像条目；条目 id/点/状态喂给模型供 updates 锚定
+            val entries = db.learningProfileDao().allActive().filter { it.topic == conv.title }
+            val entriesJson = gson.toJson(entries.map {
+                mapOf("id" to it.id, "point" to it.point, "status" to it.status)
+            })
+            val raw = requestLlm(
+                system = RoundtableSummaryTexts.SYSTEM,
+                user = RoundtableSummaryTexts.userInput(
+                    transcript, skillParamsString(conv, "material"), entriesJson),
+            ) ?: run { Log.w("RoundtableSummary", "小结请求失败 room=$roomId"); return@launch }
+            val ex = RoundtableSummaryParser.parse(raw)
+                ?: run { Log.w("RoundtableSummary", "小结 JSON 不可解析，丢弃 room=$roomId"); return@launch }
+            // 提取→DAO 指令（toDaoInstructions 内丢弃幻觉 id），落学习画像
+            RoundtableSummaryParser.toDaoInstructions(ex, entries).forEach { ins ->
+                when (ins) {
+                    is Instruction.Insert -> db.learningProfileDao().insert(
+                        LearningReview.newEntry(
+                            conv.title, ins.point, ins.status, roomId, System.currentTimeMillis()))
+                    is Instruction.Update -> db.learningProfileDao().byId(ins.id)?.let { e ->
+                        db.learningProfileDao().update(e.copy(point = ins.point, status = ins.status))
+                    }
+                }
+            }
+            // 小结按 assistant 落库（灰底"圆桌小结"，ChatScreen 现有渲染链自然显示）
+            chatRepository.insertMessage(MessageEntity(
+                conversationId = roomId, role = "assistant", content = ex.summary,
+                senderDisplayName = "圆桌小结", senderColorHex = "#9E9E9E",
+            ))
+        } finally {
+            // 覆盖全部提前 return 路径：小结失败/未达节流/非圆桌都必须放行单飞，否则永久锁死
+            summaryFlight.exit(roomId)
+        }
+    }
+
+    /**
+     * 会话 skillParams JSON 里的字符串键（圆桌 material 等；[SkillHost.chatroomParams]
+     * 同款读法：gson→Map、非字符串值滤除，解析失败/空值回退 null）。
+     */
+    private fun skillParamsString(conv: ConversationEntity, key: String): String? {
+        val source = conv.skillParams?.takeIf { it.isNotBlank() } ?: return null
+        val obj = try {
+            gson.fromJson(source, Map::class.java)
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        return (obj[key] as? String)?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * VM 侧单 turn 直驱轻量请求（收桌小结用）：stream 收集仿 [AgentEngineRuntime.compactSummarizer]/
+     * TitleTrigger.generate 手写——标题生成是 SkillHost 私有件，VM 无现成轻量链路。
+     * 仅累积 text 块增量；任何失败（网络/错误事件/空响应）返 null，调用方静默降级。
+     * 注意 stream 无 flowOn，网络阻塞随收集方调度——调用方必须在 IO 上收集。
+     */
+    private suspend fun requestLlm(system: String, user: String): String? = runCatching {
+        val engine = agentSession.engine
+        val req = LlmRequest(
+            model = engine.agentSettingsCache.currentModel,
+            system = system,
+            history = listOf(
+                AgentMessage(
+                    id = "roundtable-summary",
+                    role = Role.USER,
+                    blocks = listOf(ContentBlock.Text(user)),
+                )
+            ),
+            tools = emptyList(),
+            mode = ToolMode.NATIVE,
+            temperature = null,
+            maxTokens = null,
+            searchAllowed = false,
+            budgetLeft = { true },
+        )
+        val sb = StringBuilder()
+        val openTypes = HashMap<String, String>()
+        engine.agentLlm.stream(req).collect { ev ->
+            when (ev) {
+                is StreamEvent.BlockStart -> openTypes[ev.blockId] = ev.type
+                is StreamEvent.BlockEnd -> openTypes.remove(ev.blockId)
+                is StreamEvent.BlockDelta -> if (openTypes[ev.blockId] == "text") sb.append(ev.delta)
+                is StreamEvent.Error -> throw ev.error
+                else -> {}
+            }
+        }
+        sb.toString().trim().takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     override fun onCleared() {
         super.onCleared()

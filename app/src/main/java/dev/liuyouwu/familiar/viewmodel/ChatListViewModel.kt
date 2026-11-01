@@ -29,7 +29,9 @@ data class ConversationWithPreview(
     val isChatRoom: Boolean,
     val isPinned: Boolean,
     val lastMessage: String?,
-    val messageCount: Int
+    val messageCount: Int,
+    /** 会话类型（圆桌长按菜单「收桌总结」判定源；ConversationEntity 直取，零 SQL 改动） */
+    val skillId: String? = null
 )
 
 /**
@@ -91,7 +93,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     lastMessage = lastMsg?.let {
                         it.content.take(100).ifBlank { if (it.senderDisplayName != null) "[消息]" else "[附件]" }
                     },
-                    messageCount = countById[conv.id] ?: 0
+                    messageCount = countById[conv.id] ?: 0,
+                    skillId = conv.skillId
                 )
             }
         }

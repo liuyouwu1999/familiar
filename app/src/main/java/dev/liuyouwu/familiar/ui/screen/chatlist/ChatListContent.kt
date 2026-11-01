@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -262,7 +263,9 @@ internal fun ChatListContent(
                             updatedAt = conv.updatedAt,
                             isChatRoom = conv.isChatRoom
                         )},
-                        onTogglePin = { viewModel.togglePinned(conv.id) }
+                        onTogglePin = { viewModel.togglePinned(conv.id) },
+                        // 圆桌手动收桌总结：穿透共享 ChatViewModel 单例（菜单项按 skillId gating）
+                        onSummarize = { chatViewModel.forceSummarize(conv.id) }
                     )
                 }
 
@@ -446,7 +449,8 @@ private fun ConversationItem(
     conversation: ConversationWithPreview,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    onTogglePin: () -> Unit
+    onTogglePin: () -> Unit,
+    onSummarize: (() -> Unit)? = null   // 圆桌专属：长按菜单「收桌总结」（null = 不显示该项）
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
@@ -544,6 +548,23 @@ private fun ConversationItem(
                 )
             }
         )
+        // 圆桌专属：手动收桌总结（跳过节流，单飞保留——spec §2）
+        if (conversation.skillId == dev.liuyouwu.familiar.skills.TypeInferer.ROUNDTABLE && onSummarize != null) {
+            DropdownMenuItem(
+                text = { Text("收桌总结") },
+                onClick = {
+                    showMenu = false
+                    onSummarize()
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Summarize,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            )
+        }
         DropdownMenuItem(
             text = { Text("删除对话") },
             onClick = {

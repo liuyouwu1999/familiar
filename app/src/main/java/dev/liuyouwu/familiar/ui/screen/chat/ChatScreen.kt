@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -180,10 +181,19 @@ fun ChatScreen(
     }
 
     LaunchedEffect(conversationId) {
+        // 收桌切换缝：先记账（prev→补跑自动小结判定），再做瞬态复位
+        viewModel.onConversationSwitched(conversationId)
         // 单实例化后瞬态状态跨会话共享，切换会话先复位（复核 Minor-4）
         viewModel.resetForConversationSwitch(conversationId)
         viewModel.loadConversationPrompt(conversationId)
         // fetchModels 不在这里重复调用：ChatViewModel 单实例化后 init 已拉取（审计 P3-7）
+    }
+
+    // 收桌退出挂点（spec §2）：系统返回键与顶栏返回同一 lambda——先判定自动小结再退出。
+    // maybeAutoSummarize 内部自筛圆桌会话/节流/单飞，非圆桌零开销直通 onBack()。
+    BackHandler {
+        viewModel.maybeAutoSummarize(conversationId)
+        onBack()
     }
 
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -698,7 +708,11 @@ fun ChatScreen(
                     PixelIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
-                        onClick = onBack,
+                        onClick = {
+                            // 与 BackHandler 同一 lambda：先判定收桌小结再退出（spec §2）
+                            viewModel.maybeAutoSummarize(conversationId)
+                            onBack()
+                        },
                         tint = PaperLight
                     )
                 },
