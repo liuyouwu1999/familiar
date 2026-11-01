@@ -1,7 +1,5 @@
 package dev.liuyouwu.familiar.agent
 
-import dev.liuyouwu.familiar.skills.profile.MaterialSection
-
 /**
  * 圆桌规划器 prompt 常量（Task 6，spec §4/§7.4）：原 [MultiAgentOrchestrator.planRound]
  * 局部 val 的圆桌专属文案迁入，internal 常量供快照测试（仿 RunMarkerTexts 先例）。
@@ -17,12 +15,14 @@ internal object RoundtablePlannerPrompt {
     /**
      * 圆桌规划 system：固定三角色表（roundtable.json multiAgent.roles 同名）+
      * 轮尾问句规则（原则 4：没聊透时最后一条必须是向用户的具体问题，回合在问句处
-     * 停止；聊透了输出空数组 []）+ point 正反例（原则 2）；[material] 经
-     * [MaterialSection.section] 渲染后拼尾部（null/空白 = 零拼接）。圆桌角色固定
-     * 预设（[dev.liuyouwu.familiar.viewmodel.SkillHost.roundFor] 经 ChatRoomHooks
-     * 解析同名三角色），不接动态角色表。
+     * 停止；聊透了输出空数组 []）+ point 正反例（原则 2）；[materialSection] =
+     * **已渲染段**（[dev.liuyouwu.familiar.skills.profile.MaterialSection.section]
+     * 产物，MultiAgentOrchestrator.plannerMaterial 构造位即此）——直接拼尾部，
+     * 本层**不二次渲染**（再过 section() 会双「圆桌学习材料」header，评审
+     * Finding 1）；null/空白 = 零拼接。圆桌角色固定预设（SkillHost.roundFor 经
+     * ChatRoomHooks 解析同名三角色），不接动态角色表。
      */
-    fun system(maxTurns: Int, material: String?): String = buildString {
+    fun system(maxTurns: Int, materialSection: String?): String = buildString {
         append(
             """
             你是群聊主持人。阅读下面的群聊记录，为本轮规划一份完整的发言序列。
@@ -41,7 +41,8 @@ internal object RoundtablePlannerPrompt {
             只输出一行 JSON，格式：{"turns":[{"speaker":"角色名","point":"这条要说的要点"}]}
             """.trimIndent()
         )
-        MaterialSection.section(material)?.let { append("\n\n").append(it) }
+        // 已渲染段直接拼（评审 Finding 1）：plannerMaterial 已是 section() 产物，再渲染即双 header
+        if (!materialSection.isNullOrBlank()) append("\n\n").append(materialSection)
     }
 
     /**

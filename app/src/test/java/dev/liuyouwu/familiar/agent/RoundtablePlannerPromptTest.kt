@@ -1,5 +1,6 @@
 package dev.liuyouwu.familiar.agent
 
+import dev.liuyouwu.familiar.skills.profile.MaterialSection
 import org.junit.Test
 
 /**
@@ -16,9 +17,12 @@ class RoundtablePlannerPromptTest {
         assert(s.contains("空数组") && s.contains("上限 3 条") && s.contains("❌") && s.contains("✅"))
     }
 
-    @Test fun `材料段拼在system尾部`() {
-        val s = RoundtablePlannerPrompt.system(3, "牛顿第三定律材料")
+    @Test fun `材料段拼在system尾部且header只出现一次`() {
+        // 输入 = 已渲染段（MaterialSection.section 产物，SkillHost.roundFor 同源）——
+        // 裸文本输入会掩盖"内部二次渲染"缺陷（评审 Finding 1）
+        val s = RoundtablePlannerPrompt.system(3, MaterialSection.section("牛顿第三定律材料"))
         assert(s.indexOf("只输出一行 JSON") < s.indexOf("圆桌学习材料"))
+        assert(s.indexOf("圆桌学习材料") == s.lastIndexOf("圆桌学习材料"))
     }
 
     @Test fun `scheduleNote按角色分派句数并删掉自然融入`() {

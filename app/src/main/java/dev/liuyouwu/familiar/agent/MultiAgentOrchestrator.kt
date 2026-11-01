@@ -180,17 +180,18 @@ class MultiAgentOrchestrator(
         roles: List<RoleSpec>,
     ): List<PlannedTurn>? {
         val names = roles.joinToString("、") { it.name }
-        // 材料在场时 transcript 行数 30→15（Task 5，spec 风险节落地）：调度请求是全链路
+        // 圆桌材料在场时 transcript 行数 30→15（Task 5，spec 风险节落地）：调度请求是全链路
         // 唯一无预裁的请求，材料段已占 systemPrompt 预算，记录行数同批下调防挤爆；
-        // 无材料 = 常量原值（现状逐字节一致）
+        // 门 = roundtableStyle && plannerMaterial != null（Task 6 评审 Finding 2：chatroom
+        // 即使未来透传材料也不下调——下调属圆桌语义）；无材料/非圆桌 = 常量原值
         val transcript = transcriptOf(
             input,
-            if (plannerMaterial != null) PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL else PLANNER_TRANSCRIPT_MESSAGES,
+            if (roundtableStyle && plannerMaterial != null) PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL else PLANNER_TRANSCRIPT_MESSAGES,
         )
         // systemPrompt（Task 6 分支）：圆桌 = RoundtablePlannerPrompt 常量（固定三角色表 +
-        // 轮尾问句规则 + point 正反例），材料段经 MaterialSection 拼尾部；chatroom = 现场
-        // 原文逐字保留（仅整体缩进 +4，trimIndent 产物逐字节不变——零回归红线，不抽常量）。
-        // 两分支各自拼一次材料段（二选一），无双拼。
+        // 轮尾问句规则 + point 正反例），plannerMaterial 是已渲染段直接拼尾部（不二次
+        // 渲染，评审 Finding 1）；chatroom = 现场原文逐字保留（仅整体缩进 +4，trimIndent
+        // 产物逐字节不变——零回归红线，不抽常量）。两分支各自拼一次材料段（二选一），无双拼。
         val systemPrompt = if (roundtableStyle) {
             RoundtablePlannerPrompt.system(maxTurnsPerRound, plannerMaterial)
         } else {
@@ -336,7 +337,7 @@ class MultiAgentOrchestrator(
         /** 调度请求的记录行数上限（buildRoomTranscript maxMessages=30 同值）。 */
         const val PLANNER_TRANSCRIPT_MESSAGES = 30
 
-        /** 材料在场时的记录行数（Task 5：30→15，spec 风险节——调度请求无预裁，材料段占 systemPrompt 预算）。 */
+        /** 圆桌材料在场时的记录行数（Task 5：30→15，spec 风险节——调度请求无预裁，材料段占 systemPrompt 预算；门 = roundtableStyle && plannerMaterial != null，Task 6 评审 Finding 2）。 */
         const val PLANNER_TRANSCRIPT_MESSAGES_WITH_MATERIAL = 15
 
         /** 调度记录单行截断（Task 6：150→300，规划器看得更全；chatroom 共用同一常量，仅规划输入变全，无行为语义变化）。 */
