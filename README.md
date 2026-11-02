@@ -81,27 +81,7 @@
 
 ## 界面预览
 
-| 会话列表 | 大肥鱼对话 | 蓝色大肥鱼 | 深色主题 |
-|:---:|:---:|:---:|:---:|
-| ![会话列表](screenshots/chatlist.jpg) | ![大肥鱼对话](screenshots/chat.jpg) | ![蓝色大肥鱼](screenshots/familiar_blue.jpg) | ![深色主题](screenshots/dark.jpg) |
-
-学习功能（导师课堂与学习圆桌）：
-
-| 课程配置 | 导师课堂 | 圆桌配置 | 圆桌讨论 |
-|:---:|:---:|:---:|:---:|
-| ![课程配置](screenshots/tutor_setup.jpg) | ![导师课堂](screenshots/tutor.jpg) | ![圆桌配置](screenshots/roundtable_setup.jpg) | ![圆桌讨论](screenshots/roundtable.jpg) |
-
-聊天室：
-
-![创建聊天室](screenshots/chatroom_setup.jpg)
-
-![闲聊群](screenshots/chatroom.jpg)
-
-连接与设置：
-
-![连接](screenshots/connect.jpg)
-
-![设置](screenshots/settings.jpg)
+（界面近期改版，截图待重新截取后补充）
 
 ## 从源码构建
 
