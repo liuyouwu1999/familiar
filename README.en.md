@@ -19,6 +19,16 @@ Familiar is an Android client for local LLMs built around AI companionship: it c
 
 </div>
 
+## Download
+
+Get the latest `Familiar-<version>.apk` from the [Releases](https://github.com/liuyouwu1999/familiar/releases) page. Every release ships with a `SHA256SUMS.txt` checksum file.
+
+Requires Android 8.0 (API 26) or later.
+
+Access to GitHub may require workarounds in mainland China.
+
+Note: in-app update checks depend on the release asset name `Familiar-<version>.apk` and tag `v<version>`. Please keep them unchanged.
+
 ## Screenshots
 
 **Companion & desktop pet** — once connected, the fish stays on your screen; replies are split into short messages with pauses, like a real person typing.
@@ -53,15 +63,6 @@ Familiar is an Android client for local LLMs built around AI companionship: it c
   <img src="screenshots/connect.jpg" width="24%" alt="Local LLM connection">
 </p>
 
-## Download
-
-Get the latest `Familiar-<version>.apk` from the [Releases](https://github.com/liuyouwu1999/familiar/releases) page. Every release ships with a `SHA256SUMS.txt` checksum file.
-
-Requires Android 8.0 (API 26) or later.
-
-Access to GitHub may require workarounds in mainland China.
-
-Note: in-app update checks depend on the release asset name `Familiar-<version>.apk` and tag `v<version>`. Please keep them unchanged.
 
 ## Features
 

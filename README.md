@@ -19,6 +19,16 @@ Familiar 是一个以拟人陪伴为主的 Android 本地大模型客户端：�
 
 </div>
 
+## 下载安装
+
+前往 [Releases](https://github.com/liuyouwu1999/familiar/releases) 页面下载最新 `Familiar-<版本>.apk`，每个 Release 附有 `SHA256SUMS.txt` 校验和，下载后可以比对。
+
+系统要求 Android 8.0（API 26）及以上。
+
+中国大陆网络环境访问 GitHub 可能需要自行解决可达性。
+
+注意：应用内检查更新依赖 Release 资产命名 `Familiar-<版本>.apk` 与 tag `v<版本>`，请勿变更。
+
 ## 界面预览
 
 **桌宠与陪伴** —— 连上模型后大肥鱼常驻屏幕；回复按句界拆成多条短消息，像真人一句一句说。
@@ -53,15 +63,6 @@ Familiar 是一个以拟人陪伴为主的 Android 本地大模型客户端：�
   <img src="screenshots/connect.jpg" width="24%" alt="连接本地大模型">
 </p>
 
-## 下载安装
-
-前往 [Releases](https://github.com/liuyouwu1999/familiar/releases) 页面下载最新 `Familiar-<版本>.apk`，每个 Release 附有 `SHA256SUMS.txt` 校验和，下载后可以比对。
-
-系统要求 Android 8.0（API 26）及以上。
-
-中国大陆网络环境访问 GitHub 可能需要自行解决可达性。
-
-注意：应用内检查更新依赖 Release 资产命名 `Familiar-<版本>.apk` 与 tag `v<版本>`，请勿变更。
 
 ## 功能
 
