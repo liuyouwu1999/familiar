@@ -178,7 +178,7 @@ This app is only a chat client. Models are served by your own server or the clou
 | [compose-markdown](https://github.com/jeziellago/compose-markdown) | Markdown rendering | MIT |
 | [Ark Pixel Font](https://github.com/TakWolf/ark-pixel-font) | Pixel UI font | OFL 1.1 |
 | [dsh-humanized-deepseek-maid](https://github.com/loonai321/dsh-humanized-deepseek-maid) | Reference for the companion engine (layered memory, human-like pacing) | MIT |
-| [codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) | The pet's artwork and animation frames, by YunYueSama (orange palette is a recolored derivative by this project; full license text in NOTICE) | [Big Fat Fish Attribution License 1.0](https://github.com/YunYueSama/codex-deepseek-pet) |
+| [codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) | The pet's artwork and animation frames, by YunYueSama (orange palette is a recolored derivative by this project; full license text in NOTICE). The repository logo is a crop of the pet artwork | [Big Fat Fish Attribution License 1.0](https://github.com/YunYueSama/codex-deepseek-pet) |
 | [dsh-deepseek-pet](https://github.com/txlznbzsdj-collab/dsh-deepseek-pet) | Pet interaction design reference (tap lines, confetti, flick comeback, dozing; no code or assets copied) | MIT (design reference only) |
 | [Kyaa-A/eli5](https://github.com/Kyaa-A/eli5) | Rule design ported for the ELI5 mode | MIT |
 | [OpenMAIC](https://github.com/THU-MAIC/OpenMAIC) | Tutoring mechanism reference (teaching loop, no-spoiler quizzing, role trio) | MIT |

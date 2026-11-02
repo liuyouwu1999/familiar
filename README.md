@@ -178,7 +178,7 @@ Familiar 完全免费，官方发布渠道只有本仓库和仓库的 [Releases]
 | [compose-markdown](https://github.com/jeziellago/compose-markdown) | Markdown 渲染 | MIT |
 | [Ark Pixel Font](https://github.com/TakWolf/ark-pixel-font) | 像素风界面字体 | OFL 1.1 |
 | [dsh-humanized-deepseek-maid](https://github.com/loonai321/dsh-humanized-deepseek-maid) | 拟人陪伴引擎机制参考与移植（分层记忆/拟人节奏等） | MIT |
-| [codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) | 桌宠"大肥鱼"的形象与动画帧，作者 YunYueSama（橘色系为本项目重着色衍生，许可全文见 NOTICE） | [大肥鱼项目署名许可 1.0](https://github.com/YunYueSama/codex-deepseek-pet) |
+| [codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) | 桌宠"大肥鱼"的形象与动画帧，作者 YunYueSama（橘色系为本项目重着色衍生，许可全文见 NOTICE）；仓库 Logo 亦截自该桌宠立绘 | [大肥鱼项目署名许可 1.0](https://github.com/YunYueSama/codex-deepseek-pet) |
 | [dsh-deepseek-pet](https://github.com/txlznbzsdj-collab/dsh-deepseek-pet) | 桌宠交互设计参考（单击台词/双击庆祝/甩远吐槽/失焦打盹等，未复制代码与素材） | MIT（仅设计参考） |
 | [Kyaa-A/eli5](https://github.com/Kyaa-A/eli5) | 讲人话（ELI5）模式规则设计移植 | MIT |
 | [OpenMAIC](https://github.com/THU-MAIC/OpenMAIC) | 导师课堂/学习圆桌教学机制参考（教学循环/防泄题/角色三件套） | MIT |
