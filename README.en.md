@@ -1,15 +1,57 @@
-English | [中文](README.md)
+<div align="center">
+
+<img src=".github/images/logo.png" width="140" alt="Familiar">
 
 # Familiar
 
-A big fat fish living in your phone. Familiar is an Android client for local LLMs built around AI companionship: it connects to your own Ollama, llama.cpp, LM Studio, or any OpenAI-compatible cloud provider. Your main companion, the big fat fish, chats with you day-to-day with her own persona and memory, and turns into a desktop pet right on your screen. You can also pull a group of characters into a chat room or a study roundtable. All chats, attachments, and settings stay on your device — nothing goes through any third-party server (the only exception: optional web search sends search terms to the search engine — see Privacy).
+**A big fat fish living in your phone**
 
 [![GitHub Release](https://img.shields.io/github/v/release/liuyouwu1999/familiar)](https://github.com/liuyouwu1999/familiar/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Android-lightgrey)
 ![Min API](https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-green)
 
+[English](README.en.md) | [中文](README.md)
+
+Familiar is an Android client for local LLMs built around AI companionship: it connects to your own Ollama, llama.cpp, LM Studio, or any OpenAI-compatible cloud provider. Your main companion, the big fat fish, chats with you day-to-day with her own persona and memory, and turns into a desktop pet right on your screen. You can also pull a group of characters into a chat room or a study roundtable. All chats, attachments, and settings stay on your device — nothing goes through any third-party server.
+
 [Download](#download) · [Features](#features) · [Screenshots](#screenshots) · [Build from source](#build-from-source) · [Contributing](#contributing) · [License](#license)
+
+</div>
+
+## Screenshots
+
+**Companion & desktop pet** — once connected, the fish stays on your screen; replies are split into short messages with pauses, like a real person typing.
+
+<p align="center">
+  <img src="screenshots/chat.jpg" width="24%" alt="Human-like chat">
+  <img src="screenshots/pet_menu.jpg" width="24%" alt="Long-press menu">
+  <img src="screenshots/new_menu.jpg" width="24%" alt="Session types">
+  <img src="screenshots/dark.jpg" width="24%" alt="Dark theme">
+</p>
+
+**Pet skins** — the default blue fish is the DeepSeek original; switch to the "Relay-Station" skin and she puts on an orange maid outfit, pretending to be Claude (an inside joke of LLM relay stations).
+
+<p align="center">
+  <img src="screenshots/pet_blue.jpg" width="24%" alt="Blue fish">
+  <img src="screenshots/pet_desk.jpg" width="24%" alt="Orange fish">
+</p>
+
+**Learning** — the tutor classroom follows a teaching loop, and the study roundtable has three roles questioning each other.
+
+<p align="center">
+  <img src="screenshots/tutor_setup.jpg" width="24%" alt="Course setup">
+  <img src="screenshots/tutor_plan.jpg" width="24%" alt="Plan outline">
+  <img src="screenshots/tutor_class.jpg" width="24%" alt="Tutor classroom">
+  <img src="screenshots/roundtable.jpg" width="24%" alt="Study roundtable">
+</p>
+
+**Group chat & connection** — free-form group chat with preset persona cards; type an address to reach your own local LLM server.
+
+<p align="center">
+  <img src="screenshots/chatroom.jpg" width="24%" alt="Group chat">
+  <img src="screenshots/connect.jpg" width="24%" alt="Local LLM connection">
+</p>
 
 ## Download
 
@@ -23,84 +65,62 @@ Note: in-app update checks depend on the release asset name `Familiar-<version>.
 
 ## Features
 
-The big fat fish (main companion):
+### The big fat fish (main companion)
 
-- Fixed persona: Blue Big Fat Fish / Relay-Station Big Fat Fish (Claude orange), switched together with the pet color; artwork and personality come from the community project codex-deepseek-pet. What she calls you is customizable (default: "Boss")
-- Desktop pet: once a model is connected, she sits on your screen — tap to interact, double-tap for confetti, long-press for a menu (open chat / head pat / cold joke / hide), flick her away for a comeback, dozes off when the app loses focus. Position is remembered; optional overlay mode (off by default) keeps her floating above other apps
-- Layered memory: stable facts (conservatively extracted and deduplicated) + interaction log (one line per turn), accumulated and recalled automatically — she gets to know you over time. Memory can be viewed, copied, and cleared behind a two-step confirmation
-- Human-like pacing: replies are split into 2-4 short messages with reading-time delays and pauses, like a real person texting
-- Three speaking modes: default / proactive / quiet-passive
+- **Fixed persona**: Blue Big Fat Fish / Relay-Station Big Fat Fish (Claude orange), switched together with the pet color; artwork and personality come from the community project codex-deepseek-pet. What she calls you is customizable (default: "Boss")
+- **Desktop pet**: once a model is connected, she sits on your screen — tap to interact, double-tap for confetti, long-press for a menu (open chat / head pat / cold joke / hide), flick her away for a comeback, dozes off when the app loses focus. Position is remembered; optional overlay mode (off by default) keeps her floating above other apps
+- **Layered memory**: stable facts (conservatively extracted and deduplicated) + interaction log (one line per turn), accumulated and recalled automatically — she gets to know you over time. Memory can be viewed, copied, and cleared behind a two-step confirmation
+- **Human-like pacing**: replies are split into 2-4 short messages with reading-time delays and pauses, like a real person texting
+- **Three speaking modes**: default / proactive / quiet-passive
 
-Connection:
+### Connection
 
-- Custom endpoints and cloud providers are separated: local backends (Ollama, llama.cpp, LM Studio) work with just an address; for cloud providers you pick a vendor, the official base URL is filled in automatically, and you only add an API key. 12 vendors with sample models built in
-- LAN scanning to discover local servers automatically. API keys are encrypted with Android Keystore (AES-256-GCM); plain-http addresses get an explicit warning
-- Model lists are fetched online; embedding models are filtered out
+- **Local backends and cloud providers are separated**: local backends (Ollama, llama.cpp, LM Studio) work with just an address; for cloud providers you pick a vendor, the official base URL is filled in automatically, and you only add an API key. 12 vendors with sample models built in
+- **Just an IP works**: with no port given, common ports are tried first and an extended port range is scanned automatically; LAN scanning lists every server in your network for manual pick
+- **Connection diagnostics**: address / auth / model / reply shown as a four-step traffic light; failures auto-expand so you fix exactly the red step
+- **Encrypted keys**: API keys are encrypted with Android Keystore (AES-256-GCM); plain-http addresses get an explicit warning
+- **Model lists are fetched online**; embedding models are filtered out
 
-Attachments & input:
+### Attachments & input
 
-- Camera, gallery images, PDF documents, video frame sampling (1-50 frames, for vision models)
-- Markdown reply rendering; voice input; TTS read-aloud (voice is transcribed by your configured server by default, falling back to the system speech service on failure)
+- **Multimodal attachments**: camera, gallery images, PDF documents, video frame sampling (1-50 frames); images go straight to the model in OpenAI-compatible format, so vision models (llama.cpp mmproj, Qwen-VL, etc.) can see and talk about them
+- **Voice**: speech-to-text input and TTS read-aloud (voice is transcribed by your configured server by default, falling back to the system speech service on failure)
+- **Interject & queue**: you can keep typing while a reply is generating — send normally to interject, long-press to queue a follow-up that is delivered after the current reply (a queue banner above the input bar can cancel it)
+- **Markdown rendering** for replies
 
-Context management (KV-cache friendly):
+### Context management (KV-cache friendly)
 
-- Per-conversation max context tokens (512-2000000), set to match your model's actual context (OpenAI-compatible endpoints generally don't report it), with automatic history trimming beyond the limit
-- Anchored early trimming with hysteresis: boundaries move as little as possible; evicted messages degrade to byte-stable placeholder text
-- System prompts stay byte-stable across turns, so llama.cpp / Ollama KV caches and remote prompt caches hit on the longest common prefix — the steadier the prefix, the higher the hit rate
-- Context usage panel: messages / attachments / system prompt / reply headroom / remaining, plus cache hit rate
+- **Per-conversation max context tokens** (512-2000000), set to match your model's actual context (OpenAI-compatible endpoints generally don't report it), with automatic history trimming beyond the limit
+- **Anchored early trimming with hysteresis**: boundaries move as little as possible; evicted messages degrade to byte-stable placeholder text
+- **System prompts stay byte-stable across turns**, so llama.cpp / Ollama KV caches and remote prompt caches hit on the longest common prefix — the steadier the prefix, the higher the hit rate
+- **Context usage panel**: messages / attachments / system prompt / reply headroom / remaining, plus cache hit rate
 
-Learning features:
+### Learning features
 
-- Tutor classroom (study course): tailor your own class — four levels, learning styles (explanatory / Socratic / example-driven / project-based), tutor tone, and teaching language. The tutor follows a teaching loop: diagnostic first, then a `/plan` outline of 5-9 sections; each section covers exactly one concept and ends with a question, waiting for you to think first. Quizzes reveal one question at a time and never leak the answer in advance; when you're wrong, the tutor guides through a hint → partial explanation → worked example chain instead of giving it away. Progress is tracked on-device: section-by-section outline checkmarks, quiz score, and a weak-points list that grading feedback prioritizes — remembered across sessions
-- Classroom discussion (optional): up to two AI classmates chime in — Xiao Ke, who always asks why, and A Sui, who loves obscure trivia. One short line at a time, never lecturing for the teacher, and they'll happily make the exact mistake you just made
-- Command chips above the input bar: `/plan` study plan, `/start` start the lesson, `/test` quiz me, `/example` another example, `/progress` report progress
-- Web verification: lessons and roundtables automatically search the web to verify version numbers, years and other time-sensitive facts; the big fat fish and chat rooms can enable the same from Settings (unofficial Bing China scraping that may break on layout changes; search terms are sent to Bing)
-- Study roundtable: pick a topic and three roles discuss it around the table — the lecturer covers one concept at a time and throws out a question, the inquisitive classmate presses on anything vague, and the complete outsider exposes blind spots with everyday analogies
-- Plain-language mode: explain complex ideas in everyday words
+- **Tutor classroom (study course)**: tailor your own class — four levels, learning styles (explanatory / Socratic / example-driven / project-based), tutor tone, and teaching language. The tutor follows a teaching loop: diagnostic first, then a `/plan` outline of 5-9 sections; each section covers exactly one concept and ends with a question, waiting for you to think first. Quizzes reveal one question at a time and never leak the answer in advance; when you're wrong, the tutor guides through a hint → partial explanation → worked example chain instead of giving it away. Progress is tracked on-device: section-by-section outline checkmarks, quiz score, and a weak-points list that grading feedback prioritizes — remembered across sessions
+- **Classroom discussion (optional)**: up to two AI classmates chime in — Xiao Ke, who always asks why, and A Sui, who loves obscure trivia. One short line at a time, never lecturing for the teacher, and they'll happily make the exact mistake you just made
+- **Command chips above the input bar**: `/plan` study plan, `/start` start the lesson, `/test` quiz me, `/example` another example, `/progress` report progress
+- **Web verification**: lessons and roundtables automatically search the web to verify version numbers, years and other time-sensitive facts; the big fat fish and chat rooms can enable the same from Settings (unofficial Bing China scraping that may break on layout changes; search terms are sent to Bing)
+- **Study roundtable**: pick a topic and three roles discuss it around the table — the lecturer covers one concept at a time and throws out a question, the inquisitive classmate presses on anything vague, and the complete outsider exposes blind spots with everyday analogies
+- **Plain-language mode**: explain complex ideas in everyday words
 
-Chat rooms:
+### Chat rooms
 
-- Free-form group chat with 2-4 characters, each bound to its own model and persona, hosted turn by turn
-- Six built-in "realistic" presets (A-Ji / Mo-Mo / Lao Chen / Tang-Tang / Ye-Ye / Pi-Pi): chatting comes first, persona second — replies vary in length, small talk is fine, and characters talk to each other instead of orbiting the user
-- What room characters call you is configured separately and does not affect the big fat fish
+- **Free-form group chat with 2-4 characters**, each bound to its own model and persona, hosted turn by turn
+- **Six built-in "realistic" presets** (A-Ji / Mo-Mo / Lao Chen / Tang-Tang / Ye-Ye / Pi-Pi): chatting comes first, persona second — replies vary in length, small talk is fine, and characters talk to each other instead of orbiting the user
+- **Separate naming**: what room characters call you is configured separately and does not affect the big fat fish
 
-Data:
+### Data
 
-- Everything stays on device (Room database), with search, pinning, and Markdown export
-- Full JSON backup & restore; backups never contain API keys
+- **Everything stays on device** (Room database), with search, pinning, and Markdown export
+- **Full JSON backup & restore**; backups never contain API keys
 
-Other:
+### Other
 
-- Pixel-art UI (Ark Pixel font; switch to the system font in settings); three theme modes (follow system / light / dark)
-- In-app update checks (daily, optional; GitHub Releases + SHA-256 verification before install)
+- **Pixel-art UI** (Ark Pixel font; switch to the system font in settings); three theme modes (follow system / light / dark)
+- **In-app update checks** (daily, optional; GitHub Releases + SHA-256 verification before install)
 
 No analytics, ads, or tracking SDKs. Apart from GitHub API calls for update checks, the app makes no other external requests.
-
-## Screenshots
-
-Companion & desktop pet — once connected, the fish stays on your screen; replies are split into short messages with pauses, like a real person typing:
-
-| Human-like chat | Long-press menu | Session types | Dark theme |
-|:---:|:---:|:---:|:---:|
-| ![Human-like chat](screenshots/chat.jpg) | ![Long-press menu](screenshots/pet_menu.jpg) | ![Session types](screenshots/new_menu.jpg) | ![Dark theme](screenshots/dark.jpg) |
-
-Pet skins — the default blue fish is the DeepSeek original; switch to the "Zhongchuanzhan" skin and she puts on an orange maid outfit, pretending to be Claude (an inside joke of LLM relay stations). The overlay and session cards change color accordingly:
-
-| Blue · DeepSeek original | Orange · pretending to be Claude |
-|:---:|:---:|
-| ![Blue fish](screenshots/pet_blue.jpg) | ![Orange fish](screenshots/pet_desk.jpg) |
-
-Learning — the tutor classroom follows a teaching loop (probe first, `/plan` an outline, verify facts online before each lesson), and the study roundtable has three roles questioning each other:
-
-| Course setup | `/plan` outline | Tutor classroom | Study roundtable |
-|:---:|:---:|:---:|:---:|
-| ![Course setup](screenshots/tutor_setup.jpg) | ![Plan outline](screenshots/tutor_plan.jpg) | ![Tutor classroom](screenshots/tutor_class.jpg) | ![Study roundtable](screenshots/roundtable.jpg) |
-
-Group chat & connection — free-form group chat with preset persona cards; type an address to reach your own llama.cpp / Ollama / LM Studio server:
-
-| Group chat | Local LLM connection |
-|:---:|:---:|
-| ![Group chat](screenshots/chatroom.jpg) | ![Local LLM connection](screenshots/connect.jpg) |
 
 ## Build from source
 
