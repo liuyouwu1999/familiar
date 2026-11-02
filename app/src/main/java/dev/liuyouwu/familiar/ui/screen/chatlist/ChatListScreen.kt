@@ -1,6 +1,7 @@
 package dev.liuyouwu.familiar.ui.screen.chatlist
 
 import androidx.compose.foundation.layout.Box
+import dev.liuyouwu.familiar.util.modelDisplayName
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -146,7 +147,7 @@ fun ChatListScreen(
             var showTopMenu by remember { mutableStateOf(false) }
             PixelTopBar(
                 title = "Familiar",
-                subtitle = currentModel.takeIf { it.isNotBlank() },
+                subtitle = currentModel.takeIf { it.isNotBlank() }?.let(::modelDisplayName),
                 actions = {
                     PixelIconButton(
                         icon = Icons.Default.Tune,

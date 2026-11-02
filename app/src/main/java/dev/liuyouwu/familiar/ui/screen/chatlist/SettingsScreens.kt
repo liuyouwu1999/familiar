@@ -45,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.liuyouwu.familiar.data.repository.ThemeMode
 import dev.liuyouwu.familiar.ui.theme.WoodBorder
+import dev.liuyouwu.familiar.ui.theme.pixelFrame
+import dev.liuyouwu.familiar.ui.theme.pixelPanelColors
 import dev.liuyouwu.familiar.util.isEmbeddingModel
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.viewmodel.ChatListViewModel
@@ -425,10 +427,7 @@ internal fun SettingsDialog(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("桌宠", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                "连上模型后，大肥鱼常驻屏幕：可拖动、点她互动、长按有菜单" +
-                                    "（需系统悬浮窗权限）。应用退到后台默认自动收起，想让她在其他应用上也露面看下方开关。" +
-                                    "菜单「躲起来」= 关闭本开关。" +
-                                    "形象来自 codex-deepseek-pet（YunYueSama，github.com/YunYueSama/codex-deepseek-pet，经修改）",
+                                "连上模型后常驻屏幕，可拖动互动（需悬浮窗权限）",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
@@ -463,8 +462,7 @@ internal fun SettingsDialog(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("退到后台继续显示", style = MaterialTheme.typography.bodyMedium)
                                 Text(
-                                    "关（默认）：切到别的应用她先躲起来，回到 Familiar 再出现。" +
-                                        "开：其他应用上面也浮着（旧版常驻行为）。",
+                                    "退到后台后仍显示在其他应用上层",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                 )
@@ -482,7 +480,7 @@ internal fun SettingsDialog(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("复习提醒", style = MaterialTheme.typography.bodyMedium)
                                 Text(
-                                    "开（默认）：有到期的学习课题时，她空闲时会主动冒泡催你复习。",
+                                    "有到期学习课题时，她会冒泡提醒你",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                 )
@@ -496,28 +494,49 @@ internal fun SettingsDialog(
                     // 皮肤选择（P5 spec §5）：列表进页现扫，accent 色块 + name；选中写 setPetColor(skin.id)
                     val petSkins by chatViewModel.petSkins.collectAsStateWithLifecycle()
                     LaunchedEffect(Unit) { chatViewModel.refreshPetSkins() }
-                    Column(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                    // 皮肤选择：像素卡片，选中 = 主色描边 + ✓ 双信号（不只靠颜色）
+                    val panel = pixelPanelColors()
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         petSkins.forEach { skin ->
+                            val selected = petColor == skin.id
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .pixelFrame(
+                                        container = panel.container,
+                                        frame = panel.frame,
+                                        highlight = panel.highlight,
+                                        shadow = panel.shadow,
+                                        border = if (selected) MaterialTheme.colorScheme.primary else panel.border
+                                    )
                                     .clickable { chatViewModel.setPetColor(skin.id) }
-                                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(14.dp)
+                                        .size(16.dp)
                                         .background(parseColorHex(skin.accent ?: "#9E9E9E"))
-                                        .border(1.dp, if (petColor == skin.id) MaterialTheme.colorScheme.primary else WoodBorder)
+                                        .border(1.dp, panel.border)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     skin.name,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (petColor == skin.id) MaterialTheme.colorScheme.primary
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selected) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
+                                Spacer(modifier = Modifier.weight(1f))
+                                if (selected) {
+                                    Text(
+                                        "✓",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }

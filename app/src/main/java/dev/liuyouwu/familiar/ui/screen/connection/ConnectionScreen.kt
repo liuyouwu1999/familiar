@@ -75,6 +75,7 @@ import dev.liuyouwu.familiar.ui.theme.GrassGreen
 import dev.liuyouwu.familiar.ui.theme.pixelEdgeFade
 import dev.liuyouwu.familiar.ui.theme.pixelSecondaryAlpha
 import dev.liuyouwu.familiar.util.isEmbeddingModel
+import dev.liuyouwu.familiar.util.modelDisplayName
 import dev.liuyouwu.familiar.util.BackendProvider
 import dev.liuyouwu.familiar.util.LanScanner
 import dev.liuyouwu.familiar.viewmodel.ConnectionResult
@@ -453,7 +454,10 @@ fun ConnectionScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Text(
-                            text = "当前模型：${selectedModel.ifBlank { "未选择" }}",
+                            text = "当前模型：${
+                                selectedModel.takeIf { it.isNotBlank() }
+                                    ?.let(::modelDisplayName) ?: "未选择"
+                            }",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,

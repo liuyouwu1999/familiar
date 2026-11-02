@@ -695,7 +695,8 @@ fun ChatScreen(
             val cacheSuffix = lastCacheHit?.let { " · 缓存命中${it}%" } ?: ""
             // 模型名带 ⌄ 下拉暗示：可点直切模型（曾经毫无可见提示，开发者都发现不了）
             val subtitle = listOfNotNull(
-                currentModel.takeIf { it.isNotBlank() }?.plus(" ⌄"),
+                currentModel.takeIf { it.isNotBlank() }
+                    ?.let { dev.liuyouwu.familiar.util.modelDisplayName(it) + " ⌄" },
                 (tokenInfo + cacheSuffix).takeIf { it.isNotBlank() }
             ).joinToString("　")
             PixelTopBar(
