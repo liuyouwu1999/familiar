@@ -8,67 +8,67 @@
       "frames": [
         [
           "idle_0.webp",
-          500
+          9000
         ],
         [
           "idle_1.webp",
-          150
+          130
         ],
         [
           "idle_2.webp",
-          150
+          130
         ],
         [
           "idle_3.webp",
-          150
+          130
         ],
         [
           "idle_4.webp",
-          150
+          130
         ],
         [
           "idle_5.webp",
-          150
+          130
         ],
         [
           "idle_6.webp",
-          150
+          130
         ],
         [
           "idle_7.webp",
-          150
+          130
         ],
         [
           "idle_8.webp",
-          150
+          130
         ],
         [
           "idle_9.webp",
-          150
+          130
         ],
         [
           "idle_10.webp",
-          150
+          130
         ],
         [
           "idle_11.webp",
-          150
+          130
         ],
         [
           "idle_12.webp",
-          150
+          130
         ],
         [
           "idle_13.webp",
-          150
+          130
         ],
         [
           "idle_14.webp",
-          150
+          130
         ],
         [
           "idle_15.webp",
-          150
+          130
         ]
       ],
       "loop": true
@@ -118,7 +118,7 @@
         ],
         [
           "done_5.png",
-          400
+          110
         ]
       ],
       "loop": false
@@ -145,35 +145,35 @@
       "frames": [
         [
           "turn_0.webp",
-          140
+          160
         ],
         [
           "turn_1.webp",
-          140
+          160
         ],
         [
           "turn_2.webp",
-          140
+          160
         ],
         [
           "turn_3.webp",
-          140
+          160
         ],
         [
           "turn_4.webp",
-          140
+          160
         ],
         [
           "turn_5.webp",
-          140
+          160
         ],
         [
           "turn_6.webp",
-          140
+          160
         ],
         [
           "turn_7.webp",
-          140
+          160
         ]
       ],
       "loop": true
@@ -182,67 +182,63 @@
       "frames": [
         [
           "sleep_0.webp",
-          260
+          300
         ],
         [
           "sleep_1.webp",
-          260
+          300
         ],
         [
           "sleep_2.webp",
-          260
+          300
         ],
         [
           "sleep_3.webp",
-          260
+          300
         ],
         [
           "sleep_4.webp",
-          260
+          300
         ],
         [
           "sleep_5.webp",
-          260
+          300
         ],
         [
           "sleep_6.webp",
-          260
+          300
         ],
         [
           "sleep_7.webp",
-          260
+          300
         ],
         [
           "sleep_8.webp",
-          260
+          300
         ],
         [
           "sleep_9.webp",
-          260
+          300
         ],
         [
           "sleep_10.webp",
-          260
+          300
         ],
         [
           "sleep_11.webp",
-          260
+          300
         ],
         [
           "sleep_12.webp",
-          260
+          300
         ],
         [
           "sleep_13.webp",
-          260
-        ],
-        [
-          "sleep_14.webp",
-          260
+          300
         ],
         [
           "sleep_15.webp",
-          260
+          1500
         ]
       ],
       "loop": false
@@ -251,67 +247,67 @@
       "frames": [
         [
           "dance_0.webp",
-          130
+          170
         ],
         [
           "dance_1.webp",
-          130
+          170
         ],
         [
           "dance_2.webp",
-          130
+          170
         ],
         [
           "dance_3.webp",
-          130
+          170
         ],
         [
           "dance_4.webp",
-          130
+          170
         ],
         [
           "dance_5.webp",
-          130
+          170
         ],
         [
           "dance_6.webp",
-          130
+          170
         ],
         [
           "dance_7.webp",
-          130
+          170
         ],
         [
           "dance_8.webp",
-          130
+          170
         ],
         [
           "dance_9.webp",
-          130
+          170
         ],
         [
           "dance_10.webp",
-          130
+          170
         ],
         [
           "dance_11.webp",
-          130
+          170
         ],
         [
           "dance_12.webp",
-          130
+          170
         ],
         [
           "dance_13.webp",
-          130
+          170
         ],
         [
           "dance_14.webp",
-          130
+          170
         ],
         [
           "dance_15.webp",
-          130
+          170
         ]
       ],
       "loop": false
@@ -320,67 +316,67 @@
       "frames": [
         [
           "wave_0.webp",
-          120
+          160
         ],
         [
           "wave_1.webp",
-          120
+          160
         ],
         [
           "wave_2.webp",
-          120
+          160
         ],
         [
           "wave_3.webp",
-          120
+          160
         ],
         [
           "wave_4.webp",
-          120
+          160
         ],
         [
           "wave_5.webp",
-          120
+          160
         ],
         [
           "wave_6.webp",
-          120
+          160
         ],
         [
           "wave_7.webp",
-          120
+          160
         ],
         [
           "wave_8.webp",
-          120
+          160
         ],
         [
           "wave_9.webp",
-          120
+          160
         ],
         [
           "wave_10.webp",
-          120
+          160
         ],
         [
           "wave_11.webp",
-          120
+          160
         ],
         [
           "wave_12.webp",
-          120
+          160
         ],
         [
           "wave_13.webp",
-          120
+          160
         ],
         [
           "wave_14.webp",
-          120
+          160
         ],
         [
           "wave_15.webp",
-          120
+          160
         ]
       ],
       "loop": false
@@ -389,67 +385,48 @@
       "frames": [
         [
           "jump_0.webp",
-          100
+          140
         ],
-        [
-          "jump_1.webp",
-          100
-        ],
+        
         [
           "jump_2.webp",
-          100
+          140
         ],
         [
           "jump_3.webp",
-          100
+          140
         ],
         [
           "jump_4.webp",
-          100
+          140
         ],
         [
           "jump_5.webp",
-          100
+          140
         ],
         [
           "jump_6.webp",
-          100
+          140
         ],
-        [
-          "jump_7.webp",
-          100
-        ],
+        
         [
           "jump_8.webp",
-          100
+          140
         ],
-        [
-          "jump_9.webp",
-          100
-        ],
+        
         [
           "jump_10.webp",
-          100
+          140
         ],
-        [
-          "jump_11.webp",
-          100
-        ],
+        
         [
           "jump_12.webp",
-          100
+          140
         ],
-        [
-          "jump_13.webp",
-          100
-        ],
+        
         [
           "jump_14.webp",
-          100
-        ],
-        [
-          "jump_15.webp",
-          100
+          140
         ]
       ],
       "loop": false
@@ -458,67 +435,67 @@
       "frames": [
         [
           "eat_0.webp",
-          130
+          170
         ],
         [
           "eat_1.webp",
-          130
+          170
         ],
         [
           "eat_2.webp",
-          130
+          170
         ],
         [
           "eat_3.webp",
-          130
+          170
         ],
         [
           "eat_4.webp",
-          130
+          170
         ],
         [
           "eat_5.webp",
-          130
+          170
         ],
         [
           "eat_6.webp",
-          130
+          170
         ],
         [
           "eat_7.webp",
-          130
+          170
         ],
         [
           "eat_8.webp",
-          130
+          170
         ],
         [
           "eat_9.webp",
-          130
+          170
         ],
         [
           "eat_10.webp",
-          130
+          170
         ],
         [
           "eat_11.webp",
-          130
+          170
         ],
         [
           "eat_12.webp",
-          130
+          170
         ],
         [
           "eat_13.webp",
-          130
+          170
         ],
         [
           "eat_14.webp",
-          130
+          170
         ],
         [
           "eat_15.webp",
-          130
+          170
         ]
       ],
       "loop": false
@@ -527,67 +504,58 @@
       "frames": [
         [
           "sneak_0.webp",
-          130
+          170
         ],
         [
           "sneak_1.webp",
-          130
+          170
         ],
         [
           "sneak_2.webp",
-          130
+          170
         ],
         [
           "sneak_3.webp",
-          130
+          170
         ],
-        [
-          "sneak_4.webp",
-          130
-        ],
+        
         [
           "sneak_5.webp",
-          130
+          170
         ],
-        [
-          "sneak_6.webp",
-          130
-        ],
+        
         [
           "sneak_7.webp",
-          130
+          170
         ],
-        [
-          "sneak_8.webp",
-          130
-        ],
+        
         [
           "sneak_9.webp",
-          130
+          170
         ],
         [
           "sneak_10.webp",
-          130
+          170
         ],
         [
           "sneak_11.webp",
-          130
+          170
         ],
         [
           "sneak_12.webp",
-          130
+          170
         ],
         [
           "sneak_13.webp",
-          130
+          170
         ],
         [
           "sneak_14.webp",
-          130
+          170
         ],
         [
           "sneak_15.webp",
-          130
+          170
         ]
       ],
       "loop": false
@@ -596,131 +564,131 @@
       "frames": [
         [
           "token_0.webp",
-          110
+          150
         ],
         [
           "token_1.webp",
-          110
+          150
         ],
         [
           "token_2.webp",
-          110
+          150
         ],
         [
           "token_3.webp",
-          110
+          150
         ],
         [
           "token_4.webp",
-          110
+          150
         ],
         [
           "token_5.webp",
-          110
+          150
         ],
         [
           "token_6.webp",
-          110
+          150
         ],
         [
           "token_7.webp",
-          110
+          150
         ],
         [
           "token_8.webp",
-          110
+          150
         ],
         [
           "token_9.webp",
-          110
+          150
         ],
         [
           "token_10.webp",
-          110
+          150
         ],
         [
           "token_11.webp",
-          110
+          150
         ],
         [
           "token_12.webp",
-          110
+          150
         ],
         [
           "token_13.webp",
-          110
+          150
         ],
         [
           "token_14.webp",
-          110
+          150
         ],
         [
           "token_15.webp",
-          110
+          150
         ],
         [
           "token_16.webp",
-          110
+          150
         ],
         [
           "token_17.webp",
-          110
+          150
         ],
         [
           "token_18.webp",
-          110
+          150
         ],
         [
           "token_19.webp",
-          110
+          150
         ],
         [
           "token_20.webp",
-          110
+          150
         ],
         [
           "token_21.webp",
-          110
+          150
         ],
         [
           "token_22.webp",
-          110
+          150
         ],
         [
           "token_23.webp",
-          110
+          150
         ],
         [
           "token_24.webp",
-          110
+          150
         ],
         [
           "token_25.webp",
-          110
+          150
         ],
         [
           "token_26.webp",
-          110
+          150
         ],
         [
           "token_27.webp",
-          110
+          150
         ],
         [
           "token_28.webp",
-          110
+          150
         ],
         [
           "token_29.webp",
-          110
+          150
         ],
         [
           "token_30.webp",
-          110
+          150
         ],
         [
           "token_31.webp",
-          110
+          150
         ]
       ],
       "loop": false
@@ -729,131 +697,131 @@
       "frames": [
         [
           "meal_0.webp",
-          110
+          150
         ],
         [
           "meal_1.webp",
-          110
+          150
         ],
         [
           "meal_2.webp",
-          110
+          150
         ],
         [
           "meal_3.webp",
-          110
+          150
         ],
         [
           "meal_4.webp",
-          110
+          150
         ],
         [
           "meal_5.webp",
-          110
+          150
         ],
         [
           "meal_6.webp",
-          110
+          150
         ],
         [
           "meal_7.webp",
-          110
+          150
         ],
         [
           "meal_8.webp",
-          110
+          150
         ],
         [
           "meal_9.webp",
-          110
+          150
         ],
         [
           "meal_10.webp",
-          110
+          150
         ],
         [
           "meal_11.webp",
-          110
+          150
         ],
         [
           "meal_12.webp",
-          110
+          150
         ],
         [
           "meal_13.webp",
-          110
+          150
         ],
         [
           "meal_14.webp",
-          110
+          150
         ],
         [
           "meal_15.webp",
-          110
+          150
         ],
         [
           "meal_16.webp",
-          110
+          150
         ],
         [
           "meal_17.webp",
-          110
+          150
         ],
         [
           "meal_18.webp",
-          110
+          150
         ],
         [
           "meal_19.webp",
-          110
+          150
         ],
         [
           "meal_20.webp",
-          110
+          150
         ],
         [
           "meal_21.webp",
-          110
+          150
         ],
         [
           "meal_22.webp",
-          110
+          150
         ],
         [
           "meal_23.webp",
-          110
+          150
         ],
         [
           "meal_24.webp",
-          110
+          150
         ],
         [
           "meal_25.webp",
-          110
+          150
         ],
         [
           "meal_26.webp",
-          110
+          150
         ],
         [
           "meal_27.webp",
-          110
+          150
         ],
         [
           "meal_28.webp",
-          110
+          150
         ],
         [
           "meal_29.webp",
-          110
+          150
         ],
         [
           "meal_30.webp",
-          110
+          150
         ],
         [
           "meal_31.webp",
-          110
+          150
         ]
       ],
       "loop": false
@@ -862,131 +830,131 @@
       "frames": [
         [
           "hum_0.webp",
-          100
+          145
         ],
         [
           "hum_1.webp",
-          100
+          145
         ],
         [
           "hum_2.webp",
-          100
+          145
         ],
         [
           "hum_3.webp",
-          100
+          145
         ],
         [
           "hum_4.webp",
-          100
+          145
         ],
         [
           "hum_5.webp",
-          100
+          145
         ],
         [
           "hum_6.webp",
-          100
+          145
         ],
         [
           "hum_7.webp",
-          100
+          145
         ],
         [
           "hum_8.webp",
-          100
+          145
         ],
         [
           "hum_9.webp",
-          100
+          145
         ],
         [
           "hum_10.webp",
-          100
+          145
         ],
         [
           "hum_11.webp",
-          100
+          145
         ],
         [
           "hum_12.webp",
-          100
+          145
         ],
         [
           "hum_13.webp",
-          100
+          145
         ],
         [
           "hum_14.webp",
-          100
+          145
         ],
         [
           "hum_15.webp",
-          100
+          145
         ],
         [
           "hum_16.webp",
-          100
+          145
         ],
         [
           "hum_17.webp",
-          100
+          145
         ],
         [
           "hum_18.webp",
-          100
+          145
         ],
         [
           "hum_19.webp",
-          100
+          145
         ],
         [
           "hum_20.webp",
-          100
+          145
         ],
         [
           "hum_21.webp",
-          100
+          145
         ],
         [
           "hum_22.webp",
-          100
+          145
         ],
         [
           "hum_23.webp",
-          100
+          145
         ],
         [
           "hum_24.webp",
-          100
+          145
         ],
         [
           "hum_25.webp",
-          100
+          145
         ],
         [
           "hum_26.webp",
-          100
+          145
         ],
         [
           "hum_27.webp",
-          100
+          145
         ],
         [
           "hum_28.webp",
-          100
+          145
         ],
         [
           "hum_29.webp",
-          100
+          145
         ],
         [
           "hum_30.webp",
-          100
+          145
         ],
         [
           "hum_31.webp",
-          100
+          145
         ]
       ],
       "loop": false
@@ -995,131 +963,131 @@
       "frames": [
         [
           "tail_0.webp",
-          90
+          140
         ],
         [
           "tail_1.webp",
-          90
+          140
         ],
         [
           "tail_2.webp",
-          90
+          140
         ],
         [
           "tail_3.webp",
-          90
+          140
         ],
         [
           "tail_4.webp",
-          90
+          140
         ],
         [
           "tail_5.webp",
-          90
+          140
         ],
         [
           "tail_6.webp",
-          90
+          140
         ],
         [
           "tail_7.webp",
-          90
+          140
         ],
         [
           "tail_8.webp",
-          90
+          140
         ],
         [
           "tail_9.webp",
-          90
+          140
         ],
         [
           "tail_10.webp",
-          90
+          140
         ],
         [
           "tail_11.webp",
-          90
+          140
         ],
         [
           "tail_12.webp",
-          90
+          140
         ],
         [
           "tail_13.webp",
-          90
+          140
         ],
         [
           "tail_14.webp",
-          90
+          140
         ],
         [
           "tail_15.webp",
-          90
+          140
         ],
         [
           "tail_16.webp",
-          90
+          140
         ],
         [
           "tail_17.webp",
-          90
+          140
         ],
         [
           "tail_18.webp",
-          90
+          140
         ],
         [
           "tail_19.webp",
-          90
+          140
         ],
         [
           "tail_20.webp",
-          90
+          140
         ],
         [
           "tail_21.webp",
-          90
+          140
         ],
         [
           "tail_22.webp",
-          90
+          140
         ],
         [
           "tail_23.webp",
-          90
+          140
         ],
         [
           "tail_24.webp",
-          90
+          140
         ],
         [
           "tail_25.webp",
-          90
+          140
         ],
         [
           "tail_26.webp",
-          90
+          140
         ],
         [
           "tail_27.webp",
-          90
+          140
         ],
         [
           "tail_28.webp",
-          90
+          140
         ],
         [
           "tail_29.webp",
-          90
+          140
         ],
         [
           "tail_30.webp",
-          90
+          140
         ],
         [
           "tail_31.webp",
-          90
+          140
         ]
       ],
       "loop": false
