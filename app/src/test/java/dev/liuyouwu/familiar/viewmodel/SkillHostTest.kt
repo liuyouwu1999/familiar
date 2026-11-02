@@ -28,6 +28,7 @@ import dev.liuyouwu.familiar.search.SearchResult
 import dev.liuyouwu.familiar.skills.SkillRegistry
 import dev.liuyouwu.familiar.tools.AgentTool
 import dev.liuyouwu.familiar.util.ConversationDefaults
+import dev.liuyouwu.familiar.util.StyleGuardrails
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
 import dev.liuyouwu.familiar.util.persona.PersonaCard
 import dev.liuyouwu.familiar.viewmodel.skillhooks.ChatRoomHooks
@@ -57,7 +58,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * 覆盖（brief 逐项）：
  * - 四类型 sessionFor 产出正确 systemPrompt（familiar 含派生变量值、classroom 含
- *   TS 状态段；chat 特例 system_prompt 直通）+ 每 active 会话装配缓存（切换重建）；
+ *   TS 状态段；chat 特例 system_prompt 直通；familiar/chat/classroom/eli5 尾部静态
+ *   追加文风红线段——chatroom/roundtable 自带等价红线不追加）+ 每 active 会话装配
+ *   缓存（切换重建）；
  * - familiar hooks：记忆注入（buildMemoryTail 语义：本轮 user 拼接→buildContext）、
  *   切段回调（含 rowIds）/updateSegments 落库、appendTurn 落盘 + 桌宠回调；
  * - classroom hooks：TS 状态注入反馈回路、拆条（首行带 Thinking）、废稿重试限一次、
@@ -358,6 +361,7 @@ class SkillHostTest {
         assertTrue("tagBlock ifBlank 派生未注入", sys.contains("LANG_ZH_CN_ONLY"))
         assertTrue("tagBlock PERSONALITY 截断派生未注入", sys.contains("PERSONALITY_"))
         assertTrue("memory_note 静态声明未注入", sys.contains("记忆说明：你的长期记忆会以消息形式随上下文提供"))
+        assertTrue("文风红线（去 AI 味）未追加", sys.contains(StyleGuardrails.RED_LINES))
         assertFalse("familiar 骨架不得残留未替换变量", Regex("\\{\\{\\w+\\}\\}").containsMatchIn(sys))
         // 橙卡随 petColor 切换（T6 起 petColor=皮肤 id，走 PetSkinStore 现扫 → personaOf）
         installOrangeSkinFixture()
@@ -383,10 +387,12 @@ class SkillHostTest {
         val h = harness(scope = CoroutineScope(coroutineContext))
         h.llm.script("[T]答", "[T]答")
         h.host.sessionFor(conversation(3, systemPrompt = "你是测试助手")).send("3", "问")
-        assertEquals("你是测试助手", h.llm.calls[0].system)   // chat 特例：会话行直通
+        // chat 特例：会话行直通为 base，尾部静态追加文风红线（去 AI 味）
+        assertEquals("你是测试助手\n\n" + StyleGuardrails.RED_LINES, h.llm.calls[0].system)
         h.host.sessionFor(conversation(4, skillId = "eli5")).send("4", "问")
         assertTrue(h.llm.calls[1].system.isNotBlank())         // eli5 模板渲染非空
         assertTrue(h.llm.calls[1].system != "你是测试助手")
+        assertTrue("eli5 文风红线未追加", h.llm.calls[1].system.contains(StyleGuardrails.RED_LINES))
     }
 
     // ---------- ② familiar hooks：记忆注入 / 切段落库 / 落盘 + 桌宠 ----------
@@ -466,6 +472,7 @@ class SkillHostTest {
         // 注入文案照抄 stateToPromptBlock：标题/大纲标记/当前节/小测战绩/薄弱点/摘要
         //   P5 起走尾部临时 user 附注：system 恒稳定（不含状态块），注入文本在历史末条之后
         assertFalse("system 不得含 TS 状态块（缓存锚点）: $sys", sys.contains("当前学习进度"))
+        assertTrue("classroom 文风红线未追加", sys.contains(StyleGuardrails.RED_LINES))
         val tail = textOf(h.llm.calls[0].history.last())
         assertEquals(Role.USER, h.llm.calls[0].history.last().role)
         assertTrue("状态段标题未注入: $tail", tail.contains("# 当前学习进度（系统记录，汇报进度/继续教学时以此为准）"))

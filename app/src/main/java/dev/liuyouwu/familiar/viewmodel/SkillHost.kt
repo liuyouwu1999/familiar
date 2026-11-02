@@ -39,6 +39,7 @@ import dev.liuyouwu.familiar.tools.ToolFactory
 import dev.liuyouwu.familiar.tools.ToolRegistry
 import dev.liuyouwu.familiar.tools.WebSearchTool
 import dev.liuyouwu.familiar.util.ConversationDefaults
+import dev.liuyouwu.familiar.util.StyleGuardrails
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
 import dev.liuyouwu.familiar.util.persona.PersonaCard
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
@@ -374,7 +375,9 @@ class SkillHost(
         val assembled = assembleOrThrow(skillId, params, conversation)
         return assembleSession(
             hooks = object : AgentHooks {},
-            system = assembled.systemPrompt,
+            // 尾部静态追加文风红线（去 AI 味，范围裁定见 StyleGuardrails KDoc）：
+            // 纯常量段字节稳定，前缀缓存不受影响；用户可编辑模板本体不动
+            system = StyleGuardrails.withRedLines(assembled.systemPrompt),
             toolNames = assembled.toolNames,
             persistTransform = null,
             onPersisted = null,
@@ -408,7 +411,8 @@ class SkillHost(
         return assembleSession(
             hooks = hooks,
             // 空值变量空行兜底（P2-T3 登记项）——仅 familiar 用，chat 用户文本不动
-            system = FamiliarParams.sanitize(assembled.systemPrompt),
+            // 尾部静态追加文风红线（去 AI 味）：PersonaPromptBuilder 保持纯函数，本段不内嵌 persona 层
+            system = StyleGuardrails.withRedLines(FamiliarParams.sanitize(assembled.systemPrompt)),
             toolNames = assembled.toolNames,
             persistTransform = null,
             onPersisted = hooks::onPersisted,
@@ -436,7 +440,8 @@ class SkillHost(
         )
         val (session, loop) = assembleSession(
             hooks = hooks,
-            system = assembled.systemPrompt,
+            // 尾部静态追加文风红线（去 AI 味）：只管说话方式，输出纪律/TS 契约在模板前部不受影响
+            system = StyleGuardrails.withRedLines(assembled.systemPrompt),
             toolNames = assembled.toolNames,
             persistTransform = hooks::transformPersist,
             onPersisted = hooks::onSegmentsPersisted,
