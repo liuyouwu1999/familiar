@@ -78,7 +78,8 @@ Note: in-app update checks depend on the release asset name `Familiar-<version>.
 - **Local backends and cloud providers are separated**: local backends (Ollama, llama.cpp, LM Studio) work with just an address; for cloud providers you pick a vendor, the official base URL is filled in automatically, and you only add an API key. 12 vendors with sample models built in
 - **Just an IP works**: with no port given, common ports are tried first and an extended port range is scanned automatically; LAN scanning lists every server in your network for manual pick
 - **Connection diagnostics**: address / auth / model / reply shown as a four-step traffic light; failures auto-expand so you fix exactly the red step
-- **Encrypted keys**: API keys are encrypted with Android Keystore (AES-256-GCM); plain-http addresses get an explicit warning
+- **Encrypted keys**: API keys are encrypted with Android Keystore (AES-256-GCM); on the rare devices where Keystore is unavailable they fall back to plain storage with an explicit notice; plain-http addresses get an explicit warning
+- **MCP tools**: add MCP (Model Context Protocol) servers to extend what the model can do; connection tokens are encrypted with Android Keystore
 - **Model lists are fetched online**; embedding models are filtered out
 
 ### Attachments & input
@@ -120,7 +121,7 @@ Note: in-app update checks depend on the release asset name `Familiar-<version>.
 - **Pixel-art UI** (Ark Pixel font; switch to the system font in settings); three theme modes (follow system / light / dark)
 - **In-app update checks** (daily, optional; GitHub Releases + SHA-256 verification before install)
 
-No analytics, ads, or tracking SDKs. Apart from GitHub API calls for update checks, the app makes no other external requests.
+No analytics, ads, or tracking SDKs. The app makes no external requests other than the four uses listed above.
 
 ## Build from source
 
@@ -145,7 +146,11 @@ Issues for bugs and feature requests are welcome. For PRs, please open an issue 
 All data stays on your device. No analytics, ads, or tracking SDKs:
 
 - Chats, memory, attachments, and settings live only on your phone; uninstalling removes everything (backup files are yours to keep)
-- Network requests fall into three kinds: your own configured LLM server; GitHub Releases for update checks; and web search — lessons and roundtables may always trigger it; the big fat fish and chat rooms only when "web search" is enabled in Settings. Search terms are sent to Bing China
+- Network requests fall into four kinds:
+  1. Your own configured LLM server; if you added MCP servers in Settings, the app talks to them over the Model Context Protocol (connection and tokens are configured by you)
+  2. GitHub Releases for update checks
+  3. Web search — lessons and roundtables may always trigger it; the big fat fish and chat rooms only when "web search" is enabled in Settings. Search terms are sent to Bing China
+  4. The in-chat `http_get` tool — the model may fetch a URL with a GET request when the conversation calls for it (on the tool whitelist by default; disable it in skill settings)
 - The overlay pet (optional, off by default) requires the "display over other apps" permission solely to show the pet; it reads nothing from other apps
 - Voice input is transcribed by the server you configured (whisper-compatible endpoint) when available, falling back to the system speech service; audio never reaches the developer
 
