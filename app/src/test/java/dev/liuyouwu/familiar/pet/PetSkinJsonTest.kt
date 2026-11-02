@@ -182,20 +182,19 @@ class PetSkinJsonTest {
     }
 
     @Test fun `内置蓝资产petjson逐帧断言`() {
-        // P6 任务4b：蓝皮升级为全量动作皮——idle 16 帧 webp、sleep 16 帧入睡序列（播完定住蜷姿）、
-        // turn 8 帧，另有 9 个表演 clip（one-shot）。基态三帧表（busy/done/error/shy png）不变
+        // 蓝皮全量动作皮——idle 单帧定格（空闲不自主活动），sleep 15 帧入睡序列
+        // （播完定住蜷姿）、turn 8 帧，另有 9 个表演 clip（one-shot）。基态三帧表（busy/done/error/shy png）不变
         val s = PetSkinJson.parse("blue", builtinJson("blue"), { true }, warnFn)!!
         assertEquals("蓝色大肥鱼", s.name)
         assertEquals("#1976D2", s.accent)
         assertEquals("idle_0.png", s.avatarFile)   // 头像链仍指旧 png 首帧
         assertEquals("head.png", s.headFile)
-        // P6 任务6b 节奏定稿：idle=定格 9s + 130ms 快速呼吸循环（平时不动偶尔动，动时流畅）
-        assertEquals(listOf<Pair<String, Long>>("idle_0.webp" to 9000L, "idle_1.webp" to 130L), s.clips.getValue(PetHub.Mood.IDLE).frames.take(2))
+        // idle 单帧定格：不循环、不自主活动（需要互动/表演时走对应 clip）
+        assertEquals(listOf<Pair<String, Long>>("idle_0.webp" to 9000L), s.clips.getValue(PetHub.Mood.IDLE).frames)
         assertEquals((0..3).map { "busy_$it.png" to 240L }, s.clips.getValue(PetHub.Mood.BUSY).frames)
         assertEquals(listOf("error_0.png" to 1000L), s.clips.getValue(PetHub.Mood.ERROR).frames)
-        assertEquals(16, s.clips.getValue(PetHub.Mood.IDLE).frames.size)
         assertEquals((0..7).map { "turn_$it.webp" to 160L }, s.clips.getValue(PetHub.Mood.TURN).frames)
-        assertEquals(16, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
+        assertEquals(15, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
         assertEquals(false, s.clips.getValue(PetHub.Mood.SLEEP).loop)   // 入睡序列播完定住蜷姿
         // 表演组：9 个 one-shot，帧数 16/32 两档（显式清单——PERFORMANCE_MOODS 在 PetHub object 上，
         // JVM 未 mock 环境不能引用）
@@ -216,8 +215,8 @@ class PetSkinJsonTest {
         assertEquals("#D97757", s.accent)
         assertEquals("idle_0.png", s.avatarFile)
         assertEquals("head.png", s.headFile)
-        assertEquals(16, s.clips.getValue(PetHub.Mood.IDLE).frames.size)
-        assertEquals(16, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
+        assertEquals(1, s.clips.getValue(PetHub.Mood.IDLE).frames.size)   // 空闲定格单帧
+        assertEquals(15, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
         assertEquals(false, s.clips.getValue(PetHub.Mood.SLEEP).loop)
         val perfMoods = listOf(PetHub.Mood.DANCE, PetHub.Mood.WAVE, PetHub.Mood.JUMP, PetHub.Mood.HUM,
             PetHub.Mood.TAIL, PetHub.Mood.SNEAK, PetHub.Mood.TOKEN, PetHub.Mood.MEAL, PetHub.Mood.EAT)
