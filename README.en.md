@@ -78,27 +78,29 @@ No analytics, ads, or tracking SDKs. Apart from GitHub API calls for update chec
 
 ## Screenshots
 
-| Session list | Fish chat | Blue big fat fish | Dark theme |
+Companion & desktop pet — once connected, the fish stays on your screen; replies are split into short messages with pauses, like a real person typing:
+
+| Human-like chat | Long-press menu | Session types | Dark theme |
 |:---:|:---:|:---:|:---:|
-| ![Session list](screenshots/chatlist.jpg) | ![Fish chat](screenshots/chat.jpg) | ![Blue](screenshots/familiar_blue.jpg) | ![Dark](screenshots/dark.jpg) |
+| ![Human-like chat](screenshots/chat.jpg) | ![Long-press menu](screenshots/pet_menu.jpg) | ![Session types](screenshots/new_menu.jpg) | ![Dark theme](screenshots/dark.jpg) |
 
-Learning features (tutor classroom & study roundtable):
+Pet skins — the default blue fish is the DeepSeek original; switch to the "Zhongchuanzhan" skin and she puts on an orange maid outfit, pretending to be Claude (an inside joke of LLM relay stations). The overlay and session cards change color accordingly:
 
-| Course setup | Tutor classroom | Roundtable setup | Roundtable discussion |
+| Blue · DeepSeek original | Orange · pretending to be Claude |
+|:---:|:---:|
+| ![Blue fish](screenshots/pet_blue.jpg) | ![Orange fish](screenshots/pet_desk.jpg) |
+
+Learning — the tutor classroom follows a teaching loop (probe first, `/plan` an outline, verify facts online before each lesson), and the study roundtable has three roles questioning each other:
+
+| Course setup | `/plan` outline | Tutor classroom | Study roundtable |
 |:---:|:---:|:---:|:---:|
-| ![Course setup](screenshots/tutor_setup.jpg) | ![Tutor classroom](screenshots/tutor.jpg) | ![Roundtable setup](screenshots/roundtable_setup.jpg) | ![Roundtable](screenshots/roundtable.jpg) |
+| ![Course setup](screenshots/tutor_setup.jpg) | ![Plan outline](screenshots/tutor_plan.jpg) | ![Tutor classroom](screenshots/tutor_class.jpg) | ![Study roundtable](screenshots/roundtable.jpg) |
 
-Chat rooms:
+Group chat & connection — free-form group chat with preset persona cards; type an address to reach your own llama.cpp / Ollama / LM Studio server:
 
-![Chat room setup](screenshots/chatroom_setup.jpg)
-
-![Group chat](screenshots/chatroom.jpg)
-
-Connection & settings:
-
-![Connection](screenshots/connect.jpg)
-
-![Settings](screenshots/settings.jpg)
+| Group chat | Local LLM connection |
+|:---:|:---:|
+| ![Group chat](screenshots/chatroom.jpg) | ![Local LLM connection](screenshots/connect.jpg) |
 
 ## Build from source
 

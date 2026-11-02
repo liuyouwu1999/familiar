@@ -81,7 +81,29 @@
 
 ## 界面预览
 
-（界面近期改版，截图待重新截取后补充）
+桌宠与陪伴——连上模型后大肥鱼常驻屏幕；回复按句界拆成多条短消息，带停顿节奏，像真人一样一句一句说：
+
+| 拟人对话 | 长按菜单 | 会话类型 | 深色主题 |
+|:---:|:---:|:---:|:---:|
+| ![拟人对话](screenshots/chat.jpg) | ![长按菜单](screenshots/pet_menu.jpg) | ![会话类型](screenshots/new_menu.jpg) | ![深色主题](screenshots/dark.jpg) |
+
+大肥鱼换装——默认蓝色大肥鱼是 DeepSeek 本相；切成「中转站的大肥鱼」皮肤，她就穿上橙色女仆装装成 Claude（中转站的老梗），悬浮窗与会话卡片整体换色：
+
+| 蓝色 · DeepSeek 本相 | 橙色 · 装 Claude |
+|:---:|:---:|
+| ![蓝色大肥鱼](screenshots/pet_blue.jpg) | ![中转站的大肥鱼](screenshots/pet_desk.jpg) |
+
+教学功能——导师课堂按教学循环推进（先摸底再开课、`/plan` 出大纲、开讲前自动联网查证），学习圆桌三角色互相追问：
+
+| 定制课堂 | `/plan` 大纲 | 导师课堂 | 学习圆桌 |
+|:---:|:---:|:---:|:---:|
+| ![定制课堂](screenshots/tutor_setup.jpg) | ![plan 大纲](screenshots/tutor_plan.jpg) | ![导师课堂](screenshots/tutor_class.jpg) | ![学习圆桌](screenshots/roundtable.jpg) |
+
+闲聊群与连接——真人卡预设自由群聊；填个地址就连上你自己跑的 llama.cpp / Ollama / LM Studio：
+
+| 闲聊群 | 连接本地大模型 |
+|:---:|:---:|
+| ![闲聊群](screenshots/chatroom.jpg) | ![连接本地大模型](screenshots/connect.jpg) |
 
 ## 从源码构建
 
