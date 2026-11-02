@@ -1,0 +1,32 @@
+#!/bin/sh
+# commit-msg hook:提交信息规范与隐私黑名单拦截(见 CONTRIBUTING.md)
+# 启用:git config core.hooksPath scripts/hooks
+msg="$1"
+
+# Merge 提交豁免
+head -n1 "$msg" | grep -q '^Merge ' && exit 0
+
+# 1) 隐私黑名单:内部任务编号 + 手机品牌/型号(硬拒)
+if grep -nE 'Task [0-9]+|任务 ?[0-9]+|P[0-9] ?任务|终审Important|(小米|红米|华为|HUAWEI|荣耀|HONOR|OPPO|vivo|一加|魅族|三星|Galaxy|Pixel|iPhone)' "$msg"; then
+  echo "" >&2
+  echo "✗ 提交信息命中隐私黑名单(内部任务编号/手机品牌型号)。" >&2
+  echo "  请改为中性表述:任务编号删除,设备写「真机实测/模拟器实测」。" >&2
+  echo "  规范见 CONTRIBUTING.md" >&2
+  exit 1
+fi
+
+# 2) 标题行 type 前缀(硬拒)
+head -n1 "$msg" | grep -qE '^(feat|fix|refactor|perf|test|docs|build|chore)(\([^)]+\))?: .+' || {
+  echo "" >&2
+  echo "✗ 标题行需为「type(scope): 标题」,type ∈ feat|fix|refactor|perf|test|docs|build|chore" >&2
+  echo "  规范见 CONTRIBUTING.md" >&2
+  exit 1
+}
+
+# 3) 标题过长仅提示不拦
+len=$(head -n1 "$msg" | wc -m)
+if [ "$len" -gt 90 ]; then
+  echo "⚠ 标题行偏长,建议 ≤50 字,细节移入正文(不拦截)" >&2
+fi
+
+exit 0

@@ -1,0 +1,10 @@
+# 标题行:type(scope): 中文标题,≤50字
+# type ∈ feat fix refactor perf test docs build chore
+# scope 可选:pet profile roundtable review classroom mcp chatroom
+#
+# 空一行后写正文:为什么改、怎么改、怎么验证的,分段写透。
+#
+# 隐私红线(钩子会拦截):
+#   ✗ 内部任务编号:Task N / P N 任务X / 终审Important
+#   ✗ 手机品牌型号:小米/华为/Pixel… → 一律写「真机实测」
+# 详见 CONTRIBUTING.md
