@@ -30,7 +30,7 @@ Familiar 是一个以拟人陪伴为主的 Android 本地大模型客户端：�
   <img src="screenshots/dark.jpg" width="24%" alt="深色主题">
 </p>
 
-**大肥鱼换装** —— 默认蓝色是 DeepSeek 本相；切成「中转站的大肥鱼」皮肤，就穿上橙色女仆装装成 Claude（中转站的老梗）。
+**皮肤配色** —— 两套皮肤：「蓝色大肥鱼」与「中转站的大肥鱼（Claude 橘）」，悬浮窗、会话卡片与头像整体换色。
 
 <p align="center">
   <img src="screenshots/pet_blue.jpg" width="24%" alt="蓝色大肥鱼">

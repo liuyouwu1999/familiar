@@ -30,7 +30,7 @@ Familiar is an Android client for local LLMs built around AI companionship: it c
   <img src="screenshots/dark.jpg" width="24%" alt="Dark theme">
 </p>
 
-**Pet skins** — the default blue fish is the DeepSeek original; switch to the "Relay-Station" skin and she puts on an orange maid outfit, pretending to be Claude (an inside joke of LLM relay stations).
+**Pet skins** — two skins, "Blue Big Fat Fish" and "Relay-Station Big Fat Fish (Claude orange)"; the overlay, session cards, and avatar switch color accordingly.
 
 <p align="center">
   <img src="screenshots/pet_blue.jpg" width="24%" alt="Blue fish">
