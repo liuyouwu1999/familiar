@@ -70,7 +70,8 @@ class ChatRoomHooksTest {
         // v2 卡路径：PersonaPromptBuilder 输出在场
         assertTrue(s.contains("PERSONA_LOAD"))
         assertTrue(s.contains("你自称「阿宅」"))
-        assertTrue(s.contains("称呼用户为「小刘鸭」"))   // 角色卡称呼走独立设置，默认"小刘鸭"
+        assertTrue(s.contains("用户叫「小刘鸭」"))   // 角色卡称呼走独立设置，默认"小刘鸭"
+        assertFalse(s.contains("每次回复必须以「阿宅」自称、以「小刘鸭」称呼用户"))   // 群聊不强制每轮称呼
         assertTrue(s.contains("学习圆桌的讲师"))
         assertTrue(s.contains("<START>"))
         // 聊天室角色不注入记忆：记忆说明行不得出现（虚假陈述）

@@ -867,7 +867,8 @@ class SkillHostTest {
         // 人设卡 v2 字段映射（identity/traits/称呼）+ 群规段（memberSystem 语义迁移）
         assertTrue("人设卡 PERSONA_LOAD 段未注入: ${a.prompt}", a.prompt.contains("PERSONA_LOAD"))
         assertTrue("identity 段未注入", a.prompt.contains("毒舌但心软的像素小精灵"))
-        assertTrue("称呼缺省未注入", a.prompt.contains("称呼用户为「小刘鸭」"))
+        assertTrue("称呼缺省未注入", a.prompt.contains("用户叫「小刘鸭」"))
+        assertFalse("群聊不得强制每轮称呼", a.prompt.contains("称呼用户为「小刘鸭」。这是强制性设定"))
         assertTrue("群规段未注入", a.prompt.contains("绝不代替其他角色或用户发言"))
         assertFalse("SEARCH_RULE 已在 P2 剥离，组装侧不得回加", a.prompt.contains("查证纪律"))
         assertTrue("群规段应位于 prompt 末尾（memberSystem 输出结构）", a.prompt.trimEnd().endsWith("然后加新东西"))
@@ -937,7 +938,7 @@ class SkillHostTest {
         assertFalse("chatroom 搜索跟设置（关）", h.llm.calls[1].searchAllowed)
         // 角色 prompt = memberPrompt（address 设置注入）
         assertEquals(ra.roles[0].prompt, h.llm.calls[1].system)
-        assertTrue(h.llm.calls[1].system.contains("称呼用户为「主人」"))
+        assertTrue(h.llm.calls[1].system.contains("用户叫「主人」"))
         // 角色产出落库带 sender 盖章（Orchestrator 既有机制经组装通道贯通）
         val rows = h.store.list("23")
         assertEquals(SenderInfo("阿宅", "m1", "#FF0000"), rows[1].sender)

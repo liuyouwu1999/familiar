@@ -99,7 +99,7 @@ class ChatRoomHooks(
             .map {
                 MultiAgentOrchestrator.RoleSpec(
                     name = it.displayName,
-                    prompt = memberPrompt(it, address()),
+                    prompt = memberPrompt(it, address = address().ifBlank { "小刘鸭" }),
                     model = it.modelName.ifBlank { null },
                     colorHex = it.colorHex.ifBlank { null },
                 )
@@ -157,7 +157,7 @@ class ChatRoomHooks(
                 selfName = p.displayName,
                 address = address
             )
-            return PersonaPromptBuilder.build(card, "default", memoryNote = false) +
+            return PersonaPromptBuilder.build(card, "default", memoryNote = false, addressEveryTurn = false) +
                 "\n\n" + groupRules(p.displayName)
         }
 

@@ -87,4 +87,22 @@ class PersonaPromptBuilderTest {
         assertTrue(!p.contains("记忆说明"))
         assertTrue(p.contains("铁律"))   // 其余结构完整
     }
+
+    @Test fun `群聊模式不强制每轮称呼`() {
+        // 群聊复用同一 builder：称呼保留为设定值，但不再要求每句都喊——
+        // 「每次回复必须…称呼用户」是大肥鱼单聊特性，真人群聊不会每句 @ 同一个人
+        val p = PersonaPromptBuilder.build(card, "default", memoryNote = false, addressEveryTurn = false)
+        assertTrue(!p.contains("每次回复必须以「小鱼」自称、以「主人」称呼用户"))
+        assertTrue(!p.contains("绝不使用其他任何自称或称呼"))
+        assertTrue(p.contains("你自称「小鱼」"))          // 自称约束保留
+        assertTrue(p.contains("主人"))                     // 称呼值仍作为设定注入
+        // 两处措辞都按参数切换，不再残留单聊强制句
+        assertTrue(!p.contains("称呼用户为「主人」。这是强制性设定"))
+    }
+
+    @Test fun `群聊模式同参字节稳定`() =
+        assertEquals(
+            PersonaPromptBuilder.build(card, "default", memoryNote = false, addressEveryTurn = false),
+            PersonaPromptBuilder.build(card, "default", memoryNote = false, addressEveryTurn = false),
+        )
 }
