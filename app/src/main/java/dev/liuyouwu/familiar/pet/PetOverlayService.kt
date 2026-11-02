@@ -750,7 +750,8 @@ class PetOverlayService : Service() {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             // NO_LIMITS 是贴边手感的前提：WM 会把无此 flag 的悬浮窗静默钳回屏内
             // （模拟器 dumpsys 实证：请求 x=869 → 实际 frame x=695=屏宽-窗宽），
-            // 出屏补偿全成空文；加上后请求坐标才真实落地，坐标空间=整块物理屏
+            // 贴边所需的透明边距出屏量全成空文；加上后请求坐标才真实落地（原点偏移
+            // 由 calibrateContentBounds 实测校准，钳制语义=角色贴缘不出屏）
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
