@@ -64,9 +64,9 @@ class ApiErrorHintTest {
     @Test
     fun `connect exception hint carries actual address`() {
         // 填错服务器（如把手机自己的组网 IP 当服务器）时，文案必须带实际尝试的地址
-        val e = java.net.ConnectException("Failed to connect to /192.168.10.233:1234")
+        val e = java.net.ConnectException("Failed to connect to /192.168.1.100:1234")
         val hint = ApiErrorHint.fromThrowable(e)
-        assertTrue(hint.contains("192.168.10.233:1234"))
+        assertTrue(hint.contains("192.168.1.100:1234"))
     }
 
     @Test

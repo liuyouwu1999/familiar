@@ -11,4 +11,6 @@
     <exclude domain="file" path="FamiliarMemory" />
     <!-- 待装更新 APK 数十 MB，会顶爆 Auto Backup 25MB 配额导致整个备份失败 -->
     <exclude domain="external" path="update/" />
+    <!-- 请求诊断转储含完整对话内容，与聊天同权不进云备份 -->
+    <exclude domain="external" path="last_request.json" />
 </full-backup-content>

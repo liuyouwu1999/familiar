@@ -42,7 +42,7 @@ object ApiErrorHint {
 
     fun fromThrowable(e: Throwable?, serverDesc: String = "服务器"): String {
         val msg = e?.message ?: "未知错误"
-        // 原始异常信息里带实际尝试的地址（如 "Failed to connect to /192.168.10.233:1234"），
+        // 原始异常信息里带实际尝试的地址（如 "Failed to connect to /192.168.1.100:1234"），
         // 一并展示：填错 IP（如把手机自己的组网 IP 当服务器）一眼就能看出来
         return when (e) {
             is java.net.ConnectException ->

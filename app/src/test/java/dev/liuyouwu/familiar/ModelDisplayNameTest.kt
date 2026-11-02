@@ -10,8 +10,8 @@ class ModelDisplayNameTest {
     @Test
     fun `llamacpp 全路径取文件名去 gguf 后缀`() {
         assertEquals(
-            "Huihui-Qwen3.8-27B-abliterated-Q6_K",
-            modelDisplayName("/home/rn/models/Qwen3.8-27B-abliterated/Huihui-Qwen3.8-27B-abliterated-Q6_K.gguf"),
+            "Qwen3-8B-Q4_K_M",
+            modelDisplayName("/home/user/models/Qwen3-8B/Qwen3-8B-Q4_K_M.gguf"),
         )
     }
 

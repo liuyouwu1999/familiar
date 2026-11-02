@@ -13,6 +13,8 @@
         <exclude domain="database" path="." />
         <exclude domain="file" path="FamiliarMemory" />
         <exclude domain="external" path="update/" />
+    <!-- 请求诊断转储含完整对话内容，与聊天同权不进云备份 -->
+    <exclude domain="external" path="last_request.json" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/" />
