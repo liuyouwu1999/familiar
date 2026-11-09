@@ -166,7 +166,10 @@ class ConnectionProbe(
                 if (!diagEnabled()) return@run
                 val dir = dev.liuyouwu.familiar.FamiliarApp.instance.getExternalFilesDir(null) ?: return@run
                 java.io.File(dir, "last_request.json").writeText(capDumpForDisk(json))
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // data 层可直接落 logcat（非 core/llm 纯 JVM 约束区）：开关读/写盘
+                // 失败可观测，不再静默吞掉（审计 S4 复审 Important）
+                android.util.Log.w("ConnectionProbe", "diag dump failed", e)
             }
         }
         val requestBody = json.toRequestBody("application/json".toMediaType())
