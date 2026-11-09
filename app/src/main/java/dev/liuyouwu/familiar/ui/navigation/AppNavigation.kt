@@ -36,9 +36,12 @@ fun AppNavigation() {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
     // ChatViewModel 提升为 Activity 级单例（审计 P2-11）：聊天页/聊天室编辑页/创建页
-    // 共享同一实例，"生成中"互斥（_isLoading）才能跨页面生效；fetchModels 也只拉一次
+    // 共享同一实例，"生成中"互斥（_isLoading）才能跨页面生效；fetchModels 也只拉一次。
+    // 审计 A2：依赖装配收口进 ChatViewModel.Factory（Application extras → db/repos/api
+    // 轻件），导航层不再依赖 VM 构造期自 new。
     val activity = LocalContext.current as androidx.activity.ComponentActivity
-    val chatViewModel: ChatViewModel = viewModel(viewModelStoreOwner = activity)
+    val chatViewModel: ChatViewModel =
+        viewModel(viewModelStoreOwner = activity, factory = ChatViewModel.Factory)
     // UpdateViewModel 同样必须 Activity 级（审核 P1）：NavHost 目的地内裸 viewModel() 拿到的是
     // 条目级实例，与 MainActivity 的 DialogHost/自动检查不同对象，"检查更新"菜单会变成死入口
     val updateViewModel: dev.liuyouwu.familiar.viewmodel.UpdateViewModel =
@@ -154,7 +157,8 @@ fun AppNavigation() {
 
         composable("chatlist") {
             // 主页是栈底：不拦截返回键，让系统默认行为退出应用
-            val chatListViewModel: ChatListViewModel = viewModel()
+            // 审计 A2：factory 注入（依赖装配收口进 ChatListViewModel.Factory）
+            val chatListViewModel: ChatListViewModel = viewModel(factory = ChatListViewModel.Factory)
             ChatListScreen(
                 viewModel = chatListViewModel,
                 chatViewModel = chatViewModel,
@@ -201,7 +205,7 @@ fun AppNavigation() {
 
         // 技能参数管理（P5 T6）：六类型 skill 一览 + 现存会话参数编辑（updateSkillParams）
         composable("skills") {
-            val chatListViewModel: ChatListViewModel = viewModel()
+            val chatListViewModel: ChatListViewModel = viewModel(factory = ChatListViewModel.Factory)
             dev.liuyouwu.familiar.ui.screen.skills.SkillManagementScreen(
                 listViewModel = chatListViewModel,
                 // 聊天室成员编辑复用既有编辑页（成员在会话编辑页改）

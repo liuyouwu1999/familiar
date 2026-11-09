@@ -2,7 +2,10 @@ package dev.liuyouwu.familiar.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.liuyouwu.familiar.data.local.AppDatabase
 import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
 import dev.liuyouwu.familiar.data.local.entity.PromptTemplateEntity
@@ -48,17 +51,16 @@ data class MessageSearchHit(
     val timestamp: Long
 )
 
-class ChatListViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val db = AppDatabase.getInstance(application)
-    private val chatRepository = ChatRepository(
-        conversationDao = db.conversationDao(),
-        messageDao = db.messageDao(),
-        promptTemplateDao = db.promptTemplateDao(),
-        db = db
-    )
-    private val settingsRepository = SettingsRepository(application)
-    private val modelsApi = ModelsApi()
+class ChatListViewModel(
+    application: Application,
+    // ===== 审计 A2 构造注入化：原构造期自 new 的全部依赖改为入参 =====
+    // （AppDatabase.getInstance / repo·settings 门面 / ModelsApi 轻件）；
+    // 生产装配在 [Factory] initializer（原自 new 逻辑原样搬迁），JVM 单测可注假件。
+    private val db: AppDatabase,
+    private val chatRepository: ChatRepository,
+    private val settingsRepository: SettingsRepository,
+    private val modelsApi: ModelsApi,
+) : AndroidViewModel(application) {
 
     // Raw conversations
     private val rawConversations = chatRepository
@@ -161,12 +163,13 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     init {
         // 种子模板改名迁移（默认助手→默认 等）：一次性；此后用户自己建的/改名的同名词目不受影响
+        // （审计 A2：原本就地 new 一份 SettingsRepository，现复用构造注入实例——同一
+        // DataStore 文件门面，isMigrated/markMigrated 语义不变）
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val repo = dev.liuyouwu.familiar.data.repository.SettingsRepository(getApplication())
-            if (!repo.isMigrated("template_rename")) {
+            if (!settingsRepository.isMigrated("template_rename")) {
                 mapOf("默认助手" to "默认", "编程助手" to "编程", "翻译助手" to "翻译")
                     .forEach { (old, new) -> db.promptTemplateDao().renameByName(old, new) }
-                repo.markMigrated("template_rename")
+                settingsRepository.markMigrated("template_rename")
             }
         }
         // 不在 init 里 fetchModels：从连接页导航回来时 composeAndSave 的 DataStore 写入
@@ -484,6 +487,35 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     selfName = selfName, address = address,
                 )
             )
+        }
+    }
+
+    companion object {
+        /**
+         * 导航层工厂（审计 A2）：从 CreationExtras 取 Application，原构造期自 new 的
+         * 装配逻辑**原样搬迁**至此（AppDatabase.getInstance 单例 + repo/settings 门面
+         * 各实例化一份 + ModelsApi 轻件）——运行时依赖形态与自 new 时代完全一致。
+         * 写法循 ReviewViewModel.factory 先例（viewModelFactory+initializer）。
+         */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val app = requireNotNull(
+                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                ) { "ChatListViewModel.Factory 需要 Application（CreationExtras APPLICATION_KEY）" }
+                val db = AppDatabase.getInstance(app)
+                ChatListViewModel(
+                    application = app,
+                    db = db,
+                    chatRepository = ChatRepository(
+                        conversationDao = db.conversationDao(),
+                        messageDao = db.messageDao(),
+                        promptTemplateDao = db.promptTemplateDao(),
+                        db = db,
+                    ),
+                    settingsRepository = SettingsRepository(app),
+                    modelsApi = ModelsApi(),
+                )
+            }
         }
     }
 }

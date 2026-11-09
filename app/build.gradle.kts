@@ -140,6 +140,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    // Dispatchers.setMain（审计 A2：Chat/ChatList ViewModel JVM 构造测试——viewModelScope
+    // 走 Main.immediate，无 setMain 则构造即崩）
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 
     // androidTest：MigrationTestHelper（room-testing）+ AndroidJUnitRunner（instrumentation
     // 运行必需；实测仅上 classpath 不够，还须 defaultConfig 声明 testInstrumentationRunner）

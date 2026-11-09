@@ -4,7 +4,10 @@ import android.app.Application
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.liuyouwu.familiar.data.local.AppDatabase
 import dev.liuyouwu.familiar.data.local.MessageRowMapper
 import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
@@ -116,19 +119,19 @@ data class ReplyTarget(
  * 纯移动行为零变化；本类保留依赖装配、StateFlow 声明（经构造注入回写）、
  * familiar/设置域与公开面委托——**公开 API 签名不变**，ChatScreen 等调用点零改动。
  */
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
+class ChatViewModel(
+    application: Application,
+    // ===== 审计 A2 构造注入化：原构造期自 new 的全部依赖改为入参 =====
+    // （AppDatabase.getInstance / repo·settings 门面 / 网络·转写轻件）；
+    // 生产装配在 [Factory] initializer（原自 new 逻辑原样搬迁），JVM 单测可注假件。
+    private val db: AppDatabase,
+    private val chatRepository: ChatRepository,
+    private val settingsRepository: SettingsRepository,
+    private val modelsApi: ModelsApi,
+    private val transcriber: Transcriber,
+) : AndroidViewModel(application) {
 
     private val context: Application = getApplication()
-    private val db = AppDatabase.getInstance(context)
-    private val chatRepository = ChatRepository(
-        conversationDao = db.conversationDao(),
-        messageDao = db.messageDao(),
-        promptTemplateDao = db.promptTemplateDao(),
-        db = db
-    )
-    private val settingsRepository = SettingsRepository(context)
-    private val modelsApi = ModelsApi()
-    private val transcriber = Transcriber()
 
     private val gson = com.google.gson.Gson()
 
@@ -587,8 +590,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         // skill 注册表预载（T9 台账"assets 首载主线程"闭合）：IO 线程先触达惰性加载，
-        // 会话装配/快捷指令条首读（组合期，主线程）命中已就绪的注册表
-        viewModelScope.launch(Dispatchers.IO) { skillRegistry.get(dev.liuyouwu.familiar.skills.TypeInferer.CHAT) }
+        // 会话装配/快捷指令条首读（组合期，主线程）命中已就绪的注册表。
+        // runCatching 软着陆（审计 A2）：assets 不可读的场景（JVM 单测构造期）只跳过
+        // 预载——lazy 不缓存异常，后续真实读取原样重试；设备上 fromAssets 自身宽容，
+        // 该分支零触达，预载行为不变。
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { skillRegistry.get(dev.liuyouwu.familiar.skills.TypeInferer.CHAT) }
+        }
         fetchModels()
     }
 
@@ -617,6 +625,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         /** 分页窗口（首屏与滚顶步长同源；审计复审 Minor-7：字面量收敛单点） */
         private const val MESSAGE_PAGE_WINDOW = 200
+
+        /**
+         * 导航层工厂（审计 A2）：从 CreationExtras 取 Application，原构造期自 new 的
+         * 装配逻辑**原样搬迁**至此（AppDatabase.getInstance 单例 + repo/settings 门面
+         * 各实例化一份 + 网络/转写轻件）——运行时依赖形态与自 new 时代完全一致。
+         * 写法循 ReviewViewModel.factory 先例（viewModelFactory+initializer）。
+         */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val app = requireNotNull(
+                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                ) { "ChatViewModel.Factory 需要 Application（CreationExtras APPLICATION_KEY）" }
+                val db = AppDatabase.getInstance(app)
+                ChatViewModel(
+                    application = app,
+                    db = db,
+                    chatRepository = ChatRepository(
+                        conversationDao = db.conversationDao(),
+                        messageDao = db.messageDao(),
+                        promptTemplateDao = db.promptTemplateDao(),
+                        db = db,
+                    ),
+                    settingsRepository = SettingsRepository(app),
+                    modelsApi = ModelsApi(),
+                    transcriber = Transcriber(),
+                )
+            }
+        }
     }
 
     /** 每会话分页状态（VM 单实例跨会话，per-conversation 隔离；量级 = 会话数，可忽略） */
