@@ -54,11 +54,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
+import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
 import dev.liuyouwu.familiar.skills.profile.MaterialSection
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
+import dev.liuyouwu.familiar.viewmodel.toUi
 
 import java.util.UUID
 
@@ -77,7 +78,7 @@ data class ParticipantDraft(
 )
 
 /** 预设卡 → 成员草稿：v2 字段随卡贯通（选卡即整卡替换，不残留上一张卡的痕迹） */
-internal fun PersonaPresetEntity.toParticipantDraft(modelName: String): ParticipantDraft =
+internal fun PersonaPresetUi.toParticipantDraft(modelName: String): ParticipantDraft =
     ParticipantDraft(
         modelName = modelName,
         displayName = name,
@@ -183,12 +184,12 @@ private fun generateDisplayName(modelName: String): String {
 fun ChatRoomSetupScreen(
     availableModels: List<ModelInfo>,
     currentModelName: String,
-    customPresets: List<PersonaPresetEntity>,
+    customPresets: List<PersonaPresetUi>,
     /** 学习圆桌 skill JSON 预设（AppNavigation 注入 ChatViewModel.roundtableRolePresets） */
     roundtableRolePresets: () -> List<RoundtableRolePreset>,
     onCreateRoom: (ChatRoomSetupResult) -> Unit,
-    onSavePreset: (PersonaPresetEntity) -> Unit,
-    onDeletePreset: (PersonaPresetEntity) -> Unit,
+    onSavePreset: (PersonaPresetUi) -> Unit,
+    onDeletePreset: (PersonaPresetUi) -> Unit,
     onBack: () -> Unit
 ) {
     // 模板选择（null = 未选，展示两张模板卡）；模板与会话课题一起跨进程重建保留
@@ -421,7 +422,7 @@ fun ChatRoomSetupScreen(
             draft = presetToSave!!,
             onSave = { name ->
                 val d = presetToSave!!
-                onSavePreset(PersonaPresetEntity(
+                onSavePreset(PersonaPresetUi(
                     name = name,
                     personality = d.personality,
                     colorHex = d.colorHex,
@@ -562,7 +563,7 @@ private fun RoundtableRoleCard(
 @Composable
 internal fun AddParticipantDialog(
     currentModelName: String,
-    customPresets: List<PersonaPresetEntity>,
+    customPresets: List<PersonaPresetUi>,
     participantCount: Int,
     onAdd: (ParticipantDraft) -> Unit,
     onDismiss: () -> Unit
@@ -597,6 +598,9 @@ internal fun AddParticipantDialog(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    // 内置卡为 Entity 形态，折 Ui 投影后与自定义卡同列（审计 A1）
+                    val defaultPresetsUi = DefaultPersonaCards.PRESETS.map { it.toUi() }
+
                     // Custom presets section
                     if (customPresets.isNotEmpty()) {
                         Text("我的预设:", style = MaterialTheme.typography.labelMedium)
@@ -609,7 +613,7 @@ internal fun AddParticipantDialog(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         // DB 种子与内置卡同名去重：新装用户（库已含六卡）不重复展示
-                        val dedupedDefaults = DefaultPersonaCards.PRESETS
+                        val dedupedDefaults = defaultPresetsUi
                             .filter { builtin -> customPresets.none { it.name == builtin.name } }
                         if (dedupedDefaults.isNotEmpty()) {
                             Text("默认预设:", style = MaterialTheme.typography.labelMedium)
@@ -625,7 +629,7 @@ internal fun AddParticipantDialog(
 
                     // Default presets（无自定义预设时直接展示内置卡）
                     if (customPresets.isEmpty()) {
-                        DefaultPersonaCards.PRESETS.forEach { preset ->
+                        defaultPresetsUi.forEach { preset ->
                             PresetCard(
                                 preset = preset,
                                 onClick = { onAdd(preset.toParticipantDraft(currentModelName)) }
@@ -650,7 +654,7 @@ internal fun AddParticipantDialog(
 
 @Composable
 private fun PresetCard(
-    preset: PersonaPresetEntity,
+    preset: PersonaPresetUi,
     onClick: () -> Unit
 ) {
     Card(
@@ -693,7 +697,7 @@ private fun PresetCard(
 private fun ParticipantCard(
     participant: ParticipantDraft,
     index: Int,
-    customPresets: List<PersonaPresetEntity>,
+    customPresets: List<PersonaPresetUi>,
     availableModels: List<String>,
     onRemove: () -> Unit,
     onUpdate: (ParticipantDraft) -> Unit,
@@ -796,7 +800,10 @@ private fun ParticipantCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val allPresets = customPresets.take(3).ifEmpty { DefaultPersonaCards.PRESETS.take(3) }
+                // 内置卡为 Entity 形态，折 Ui 投影后与自定义卡同列（审计 A1）
+                val allPresets = customPresets.take(3).ifEmpty {
+                    DefaultPersonaCards.PRESETS.take(3).map { it.toUi() }
+                }
                 allPresets.forEach { preset ->
                     Card(
                         modifier = Modifier

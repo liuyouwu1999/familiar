@@ -75,8 +75,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
-import dev.liuyouwu.familiar.data.local.entity.MessageEntity
-import dev.liuyouwu.familiar.ui.model.MessageRenderModel
 import dev.liuyouwu.familiar.ui.model.ToolBlock
 import dev.liuyouwu.familiar.ui.model.ToolBlockState
 import dev.liuyouwu.familiar.ui.model.UiMessage
@@ -107,57 +105,6 @@ private data class LazyAttachmentUi(
     val payload: dev.liuyouwu.familiar.ui.model.AttachmentPayload?,
     val loading: Boolean,
 )
-
-/**
- * 旧聊天链兼容重载（Agent 内核 P3 Task 8）：MessageEntity 调用形状原样保留，
- * 内部经 [MessageRenderModel.fromEntity] 折成 [UiMessage] 委托新渲染核心。
- * ChatScreen（T9 改造前）继续走此入口，行为不变。
- */
-@Composable
-fun MessageBubble(
-    message: MessageEntity,
-    isStreaming: Boolean = false,
-    streamingText: String = "",
-    streamingReasoning: String = "",
-    showThinking: Boolean = true,
-    onEdit: ((Long, String) -> Unit)? = null,
-    onCopy: ((String) -> Unit)? = null,
-    onRegenerate: (() -> Unit)? = null,
-    onContinue: (() -> Unit)? = null,
-    onReply: ((MessageEntity) -> Unit)? = null,
-    // 换模型重试：非空时末条助手消息的长按菜单出现"换模型重试"，点击后由页面层弹模型选择框
-    onRetryWithModel: (() -> Unit)? = null,
-    isLastAssistant: Boolean = false,
-    // QQ 式头像：大肥鱼传立绘帧 painter，聊天室传 null 走 avatarLetter 首字色块
-    avatarRes: Int? = null,
-    // 皮肤位图头像（P5）：非空时优先于 avatarRes 渲染（familiar 头像走此通道）
-    avatarBitmap: ImageBitmap? = null,
-    avatarLetter: String? = null,
-    avatarColor: Color? = null,
-    // 名字兜底：大肥鱼消息 senderDisplayName 为 null，由调用方传鱼名显示
-    fallbackSenderName: String? = null
-) {
-    val ui = remember(message) { MessageRenderModel.fromEntity(message) }
-    MessageBubble(
-        message = ui,
-        isStreaming = isStreaming,
-        streamingText = streamingText,
-        streamingReasoning = streamingReasoning,
-        showThinking = showThinking,
-        onEdit = onEdit?.let { cb -> { _, newContent -> cb(message.id, newContent) } },
-        onCopy = onCopy,
-        onRegenerate = onRegenerate,
-        onContinue = onContinue,
-        onReply = onReply?.let { cb -> { _ -> cb(message) } },
-        onRetryWithModel = onRetryWithModel,
-        isLastAssistant = isLastAssistant,
-        avatarRes = avatarRes,
-        avatarBitmap = avatarBitmap,
-        avatarLetter = avatarLetter,
-        avatarColor = avatarColor,
-        fallbackSenderName = fallbackSenderName,
-    )
-}
 
 /**
  * 块渲染核心（Agent 内核 P3 Task 8）：渲染 [UiMessage]（思考/文本/工具卡片三段）。

@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.liuyouwu.familiar.data.local.entity.PromptTemplateEntity
+import dev.liuyouwu.familiar.ui.model.PromptTemplateUi
 import dev.liuyouwu.familiar.ui.theme.GrassGreen
 import dev.liuyouwu.familiar.ui.theme.PaperLight
 import dev.liuyouwu.familiar.ui.theme.PixelDivider
@@ -120,7 +120,7 @@ fun ChatListScreen(
     // ===== 从模板新建（统一入口）=====
     // 模板正文含 {{变量}} 占位符时先弹填充面板；确认后全部替换再创建，取消则不创建。
     // 无占位符的模板行为与原来完全一致（直接创建）。
-    fun startConversationFromTemplate(template: PromptTemplateEntity) {
+    fun startConversationFromTemplate(template: PromptTemplateUi) {
         val vars = templateVariables(template.content)
         if (vars.isEmpty()) {
             presetState.showSelector = false

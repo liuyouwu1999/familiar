@@ -33,7 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
+import dev.liuyouwu.familiar.ui.model.ConversationUi
 import dev.liuyouwu.familiar.skills.SkillDefinition
 import dev.liuyouwu.familiar.skills.TypeInferer
 import dev.liuyouwu.familiar.ui.screen.tutor.CLASSROOM_LANGUAGE_OPTIONS
@@ -83,9 +83,9 @@ fun SkillManagementScreen(
     val conversations by listViewModel.allConversations.collectAsStateWithLifecycle()
 
     // 编辑弹窗目标（classroom 六键 / roundtable topic / familiar 采样三键各一；state 随会话行点亮）
-    var editingClassroom by remember { mutableStateOf<ConversationEntity?>(null) }
-    var editingRoundtable by remember { mutableStateOf<ConversationEntity?>(null) }
-    var editingFamiliar by remember { mutableStateOf<ConversationEntity?>(null) }
+    var editingClassroom by remember { mutableStateOf<ConversationUi?>(null) }
+    var editingRoundtable by remember { mutableStateOf<ConversationUi?>(null) }
+    var editingFamiliar by remember { mutableStateOf<ConversationUi?>(null) }
 
     // 注册表静态（assets 随包），remember 一次即可；展示按 TypeInferer 固定顺序。
     // 独立实例与 AgentEngine 建室/预填同款先例：skill JSON 打包在 APK 内不可变，
@@ -293,7 +293,7 @@ private fun orderedSkills(defs: List<SkillDefinition>): List<SkillDefinition> {
 }
 
 /** skillParams 列 JSON → 字符串键值（与 SkillHost.chatroomParams 同口径：非字符串值滤除） */
-private fun stringParams(conv: ConversationEntity): Map<String, String> {
+private fun stringParams(conv: ConversationUi): Map<String, String> {
     val source = conv.skillParams?.takeIf { it.isNotBlank() } ?: return emptyMap()
     val obj = try {
         com.google.gson.Gson().fromJson(source, Map::class.java)
@@ -309,10 +309,10 @@ private fun stringParams(conv: ConversationEntity): Map<String, String> {
 @Composable
 private fun SkillCard(
     skill: SkillDefinition,
-    conversations: List<ConversationEntity>,
-    onEditClassroom: (ConversationEntity) -> Unit,
-    onEditRoundtable: (ConversationEntity) -> Unit,
-    onEditFamiliar: (ConversationEntity) -> Unit,
+    conversations: List<ConversationUi>,
+    onEditClassroom: (ConversationUi) -> Unit,
+    onEditRoundtable: (ConversationUi) -> Unit,
+    onEditFamiliar: (ConversationUi) -> Unit,
     onEditRoom: (Long) -> Unit
 ) {
     PixelPanel(

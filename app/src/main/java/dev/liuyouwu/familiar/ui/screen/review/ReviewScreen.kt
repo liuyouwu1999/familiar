@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.liuyouwu.familiar.viewmodel.ReviewViewModel
 import dev.liuyouwu.familiar.ui.theme.PixelIconButton
 import dev.liuyouwu.familiar.ui.theme.PixelTopBar
 

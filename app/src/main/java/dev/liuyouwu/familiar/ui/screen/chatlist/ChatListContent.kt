@@ -45,8 +45,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
-import dev.liuyouwu.familiar.data.local.entity.PromptTemplateEntity
+import dev.liuyouwu.familiar.ui.model.ConversationUi
+import dev.liuyouwu.familiar.ui.model.PromptTemplateUi
 import dev.liuyouwu.familiar.ui.theme.GrassGreen
 import dev.liuyouwu.familiar.ui.theme.PaperLight
 import dev.liuyouwu.familiar.ui.theme.PixelDivider
@@ -80,7 +80,7 @@ internal fun ChatListContent(
     chatViewModel: ChatViewModel,
     onChatClick: (Long) -> Unit,
     onOpenFamiliar: () -> Unit,
-    onStartFromTemplate: (PromptTemplateEntity) -> Unit,  // 批次二：空态三格已删，参数保留防接线破坏
+    onStartFromTemplate: (PromptTemplateUi) -> Unit,  // 批次二：空态三格已删，参数保留防接线破坏
     onOpenNewChatMenu: () -> Unit = {},   // 空态「开始新对话」面板 = FAB 同效（用户实测反馈 2026-10-31）
     onSkillsClick: () -> Unit
 ) {
@@ -115,7 +115,7 @@ internal fun ChatListContent(
     }
 
     // Delete confirmation
-    var deleteTarget by remember { mutableStateOf<ConversationEntity?>(null) }
+    var deleteTarget by remember { mutableStateOf<ConversationUi?>(null) }
 
     // 会话列表过滤（审计 P5 去双轨）：命中集来自 DB 标题 LIKE（searchByTitle）。
     // 仅当 titleSearchQuery 与当前输入对齐才收窄——防抖窗口内先显全量，
@@ -258,13 +258,11 @@ internal fun ChatListContent(
                     ConversationItem(
                         conversation = conv,
                         onClick = { onChatClick(conv.id) },
-                        onDelete = { deleteTarget = ConversationEntity(
+                        // 删除确认只需 id/title：折 ConversationUi 投影（审计 A1，
+                        // 不再为弹窗拼装全量 ConversationEntity）
+                        onDelete = { deleteTarget = ConversationUi(
                             id = conv.id,
-                            title = conv.title,
-                            systemPrompt = "",
-                            createdAt = conv.updatedAt,
-                            updatedAt = conv.updatedAt,
-                            isChatRoom = conv.isChatRoom
+                            title = conv.title
                         )},
                         onTogglePin = { viewModel.togglePinned(conv.id) },
                         // 圆桌手动收桌总结：穿透共享 ChatViewModel 单例（菜单项按 skillId gating）

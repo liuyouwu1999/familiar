@@ -8,10 +8,8 @@ import androidx.lifecycle.viewModelScope
 import dev.liuyouwu.familiar.data.local.AppDatabase
 import dev.liuyouwu.familiar.data.local.MessageRowMapper
 import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
-import dev.liuyouwu.familiar.data.local.entity.ChatRoomParticipantEntity
 import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
 import dev.liuyouwu.familiar.data.local.entity.MessageEntity
-import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
 import dev.liuyouwu.familiar.agent.AgentSession
 import dev.liuyouwu.familiar.core.llm.model.AgentMessage
 import dev.liuyouwu.familiar.core.llm.model.ContentBlock
@@ -31,7 +29,9 @@ import dev.liuyouwu.familiar.skills.profile.LearningReview
 import dev.liuyouwu.familiar.skills.profile.RoundtableSummaryParser
 import dev.liuyouwu.familiar.skills.profile.RoundtableSummaryTexts
 import dev.liuyouwu.familiar.skills.profile.SingleFlight
+import dev.liuyouwu.familiar.ui.model.ChatRoomParticipantUi
 import dev.liuyouwu.familiar.ui.model.MessageRenderModel
+import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
 import dev.liuyouwu.familiar.ui.model.UiMessage
 import dev.liuyouwu.familiar.data.repository.ChatRepository
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
@@ -243,9 +243,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         get() = voice.serverWhisperAvailable
         private set(value) { voice.serverWhisperAvailable = value }
 
-    // Persona presets
-    val personaPresets: StateFlow<List<PersonaPresetEntity>> = db.personaPresetDao()
+    // Persona presets（审计 A1：出口折 PersonaPresetUi 投影，mapper 在 VM 边界调用）
+    val personaPresets: StateFlow<List<PersonaPresetUi>> = db.personaPresetDao()
         .getAllPresets()
+        .map { rows -> rows.map { it.toUi() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ===== P5 T5 Controller 拆分（纯移动拆出，构造注入依赖与回写通道） =====
@@ -846,15 +847,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ===== Persona presets / chat room setup =====
 
-    fun savePersonaPreset(preset: PersonaPresetEntity) {
+    fun savePersonaPreset(preset: PersonaPresetUi) {
         viewModelScope.launch {
-            db.personaPresetDao().insert(preset)
+            // 投影还原成 DAO 形参（UI 构造点 id=0 → 新插，与 Entity 直建语义一致）
+            db.personaPresetDao().insert(preset.toEntity())
         }
     }
 
-    fun deletePersonaPreset(preset: PersonaPresetEntity) {
+    fun deletePersonaPreset(preset: PersonaPresetUi) {
         viewModelScope.launch {
-            db.personaPresetDao().delete(preset)
+            // Room @Delete 按 id 删行：直接走 deleteById，投影缺失列无需还原
+            db.personaPresetDao().deleteById(preset.id)
         }
     }
 
@@ -914,9 +917,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 主持人：读群聊记录，决定下一个发言的角色；任何失败返回 Unknown（调用方轮换兜底） */
-    fun getChatRoomParticipants(conversationId: Long): StateFlow<List<ChatRoomParticipantEntity>> =
+    /** 主持人：读群聊记录，决定下一个发言的角色；任何失败返回 Unknown（调用方轮换兜底）。
+     *  审计 A1：出口折 [ChatRoomParticipantUi] 投影（编辑页草稿源，Entity 不出 VM）。 */
+    fun getChatRoomParticipants(conversationId: Long): StateFlow<List<ChatRoomParticipantUi>> =
         chatRoomSetup.getChatRoomParticipants(conversationId)
+            .map { members -> members.map { it.toUi() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** 学习圆桌 skill JSON 预设角色（SetupScreen 预填；实现见 [ChatRoomSetupController]）。 */
     fun roundtableRolePresets(): List<dev.liuyouwu.familiar.ui.screen.chatroom.RoundtableRolePreset> =

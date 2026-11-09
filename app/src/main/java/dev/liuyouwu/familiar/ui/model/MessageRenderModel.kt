@@ -10,7 +10,6 @@ import dev.liuyouwu.familiar.core.llm.model.ReplyRef
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.core.llm.model.SenderInfo
 import dev.liuyouwu.familiar.core.llm.think.ThinkSplitter
-import dev.liuyouwu.familiar.data.local.entity.MessageEntity
 
 /**
  * 工具卡片三态（+取消）：RUNNING=未配到结果的 ToolCall（链还在跑）；
@@ -39,7 +38,7 @@ data class AttachmentPayload(val images: List<String>, val summaries: List<Attac
 
 /**
  * MessageBubble 的渲染模型（Agent 内核 P3 Task 8）：把 [AgentMessage] 的块结构 /
- * [MessageEntity] 的旧列结构统一折成"思考 + 文本块 + 工具卡片"三段渲染决策。
+ * [MessageUi] 的旧列结构统一折成"思考 + 文本块 + 工具卡片"三段渲染决策。
  * 纯 Kotlin、无 Compose 依赖——JVM 可测（MessageRenderModelTest）。
  *
  * - thinking：Thinking 块（或存量 `<think>` 前缀拆分）聚合，唯一思考来源——
@@ -83,8 +82,9 @@ data class UiMessage(
  *
  * - [from]：AgentMessage（+ 后续 TOOL_RESULT 行的块）→ [UiMessage]。思考聚合；
  *   ToolCall 未配对=RUNNING、按 callId 配到结果=DONE、isError=ERROR/CANCELLED。
- * - [fromEntity]：MessageEntity → [UiMessage]，旧聊天链适配——blocks 权威列
- *   非空走块分拣；为空时 content 整体单 textBlock，存量 `<think>` 前缀经
+ * - [fromEntity]：[MessageUi]（审计 A1：MessageEntity 的渲染消费列投影，mapper
+ *   `MessageEntity.toUi()` 在 VM 边界调用）→ [UiMessage]，旧聊天链适配——blocks
+ *   权威列非空走块分拣；为空时 content 整体单 textBlock，存量 `<think>` 前缀经
  *   [ThinkSplitter] 一次性拆分（扩展识别集：think/thinkyle/thinking/reasoning/
  *   thought + Gemma channel 标记），替代气泡侧原 splitThinkingTags。
  */
@@ -136,46 +136,46 @@ object MessageRenderModel {
         )
     }
 
-    /** 旧聊天链适配：行 → 渲染模型（ChatScreen 的 MessageEntity 调用形状由此兼容） */
-    fun fromEntity(entity: MessageEntity): UiMessage {
-        if (entity.blocks != null) {
+    /** 旧聊天链适配：行投影 → 渲染模型（MessageEntity 经 `toUi()` 投影后进本入口） */
+    fun fromEntity(message: MessageUi): UiMessage {
+        if (message.blocks != null) {
             // blocks 权威列（Agent 内核写侧 / LazyNormalizer 回写行）：走块分拣
             return from(
                 AgentMessage(
-                    id = entity.id.toString(),
-                    role = roleOf(entity.role),
-                    blocks = BlockCodec.fromJson(entity.blocks),
-                    attachments = entityAttachments(entity),
-                    sender = entitySender(entity),
-                    replyTo = ReplyRef(entity.replyToMessageId, entity.replyToContent.orEmpty(), entity.replyToRole.orEmpty()),
-                    meta = MessageMeta(entity.promptTokens, entity.completionTokens, entity.cachedTokens),
-                    turnId = entity.turnId,
+                    id = message.id.toString(),
+                    role = roleOf(message.role),
+                    blocks = BlockCodec.fromJson(message.blocks),
+                    attachments = entityAttachments(message),
+                    sender = entitySender(message),
+                    replyTo = ReplyRef(message.replyToMessageId, message.replyToContent.orEmpty(), message.replyToRole.orEmpty()),
+                    meta = MessageMeta(message.promptTokens, message.completionTokens, message.cachedTokens),
+                    turnId = message.turnId,
                 ),
-                segments = parseSegments(entity.segments),
+                segments = parseSegments(message.segments),
             )
         }
         // 旧行：content 直出单 textBlock；存量 <think> 前缀一次性拆分（非 user 行——
         // 旧行为 user 消息不做思考拆分，字面量标签原样展示）
         val (thinking, textBlocks) =
-            if (entity.role == ROLE_USER_COLUMN) null to listOf(entity.content)
-            else oneShotThinkSplit(entity.content)
+            if (message.role == ROLE_USER_COLUMN) null to listOf(message.content)
+            else oneShotThinkSplit(message.content)
         return UiMessage(
-            id = entity.id.toString(),
-            role = roleOf(entity.role),
-            senderName = entity.senderDisplayName,
-            senderModel = entity.senderModel,
-            senderColorHex = entity.senderColorHex,
-            thinking = entity.reasoning?.takeIf { it.isNotBlank() } ?: thinking,
+            id = message.id.toString(),
+            role = roleOf(message.role),
+            senderName = message.senderDisplayName,
+            senderModel = message.senderModel,
+            senderColorHex = message.senderColorHex,
+            thinking = message.reasoning?.takeIf { it.isNotBlank() } ?: thinking,
             textBlocks = textBlocks,
             // 行模型单图列（1 行 ≤1 附件，MessageRowMapper 同口径）——列表透传全量渲染
-            images = listOfNotNull(entity.imageBase64),
-            imageBase64 = entity.imageBase64,
+            images = listOfNotNull(message.imageBase64),
+            imageBase64 = message.imageBase64,
             // 旧列语义：文件标签由 fileName 驱动，videoFrames 只贡献帧数（同旧气泡单标签）
-            attachments = entityAttachmentSummaries(entity),
-            segments = parseSegments(entity.segments),
-            meta = MessageMeta(entity.promptTokens, entity.completionTokens, entity.cachedTokens),
-            replyPreview = entity.replyToContent,
-            replyRole = entity.replyToRole,
+            attachments = entityAttachmentSummaries(message),
+            segments = parseSegments(message.segments),
+            meta = MessageMeta(message.promptTokens, message.completionTokens, message.cachedTokens),
+            replyPreview = message.replyToContent,
+            replyRole = message.replyToRole,
         )
     }
 
@@ -274,16 +274,16 @@ object MessageRenderModel {
     }
 
     /** 行附件 → 内核附件模型（imageBase64 优先，其次 videoFrames，再次 file——同 mapper 读侧） */
-    private fun entityAttachments(entity: MessageEntity): List<Attachment> = listOfNotNull(
-        entity.imageBase64?.let { Attachment.Image(it) },
-        entity.videoFrames?.let { Attachment.VideoFrames(frameBase64ListOf(it)) },
-        entity.fileName?.let { Attachment.File(it, entity.fileContent.orEmpty()) },
+    private fun entityAttachments(message: MessageUi): List<Attachment> = listOfNotNull(
+        message.imageBase64?.let { Attachment.Image(it) },
+        message.videoFrames?.let { Attachment.VideoFrames(frameBase64ListOf(it)) },
+        message.fileName?.let { Attachment.File(it, message.fileContent.orEmpty()) },
     )
 
     /** 旧列语义的附件摘要：文件标签由 fileName 驱动，videoFrames 只贡献帧数（单标签） */
-    private fun entityAttachmentSummaries(entity: MessageEntity): List<AttachmentSummary> =
-        entity.fileName?.let { name ->
-            listOf(AttachmentSummary(name, entity.videoFrames?.let { frameBase64ListOf(it).size }))
+    private fun entityAttachmentSummaries(message: MessageUi): List<AttachmentSummary> =
+        message.fileName?.let { name ->
+            listOf(AttachmentSummary(name, message.videoFrames?.let { frameBase64ListOf(it).size }))
         }.orEmpty()
 
     private fun frameBase64ListOf(json: String): List<String> = try {
@@ -298,11 +298,11 @@ object MessageRenderModel {
         is Attachment.VideoFrames -> AttachmentSummary(null, framesBase64.size)
     }
 
-    private fun entitySender(entity: MessageEntity): SenderInfo? =
-        if (entity.senderModel == null && entity.senderDisplayName == null && entity.senderColorHex == null) null
+    private fun entitySender(message: MessageUi): SenderInfo? =
+        if (message.senderModel == null && message.senderDisplayName == null && message.senderColorHex == null) null
         else SenderInfo(
-            name = entity.senderDisplayName.orEmpty(),
-            model = entity.senderModel,
-            colorHex = entity.senderColorHex,
+            name = message.senderDisplayName.orEmpty(),
+            model = message.senderModel,
+            colorHex = message.senderColorHex,
         )
 }

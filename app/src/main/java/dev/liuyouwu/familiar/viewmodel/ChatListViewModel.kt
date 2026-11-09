@@ -4,11 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.liuyouwu.familiar.data.local.AppDatabase
-import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
-import dev.liuyouwu.familiar.data.local.entity.MessageEntity
 import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
 import dev.liuyouwu.familiar.data.local.entity.PromptTemplateEntity
 import dev.liuyouwu.familiar.data.remote.api.ModelsApi
+import dev.liuyouwu.familiar.ui.model.ConversationUi
+import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
+import dev.liuyouwu.familiar.ui.model.PromptTemplateUi
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
 import dev.liuyouwu.familiar.data.repository.ChatRepository
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
@@ -65,10 +66,13 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * 会话实体全量观察（P5 T6，SkillManagementScreen 数据源）：与 [conversationsWithPreview]
-     * 同一上游流，但保留完整实体列（skillId 分组/skillParams 预填必需）。
+     * 会话全量观察（P5 T6，SkillManagementScreen 数据源）：与 [conversationsWithPreview]
+     * 同一上游流；审计 A1 出口折 [ConversationUi] 投影（skillId 分组/skillParams 预填
+     * 必需列随投影带出，Entity 不再出 VM）。
      */
-    val allConversations: StateFlow<List<ConversationEntity>> = rawConversations
+    val allConversations: StateFlow<List<ConversationUi>> = rawConversations
+        .map { rows -> rows.map { it.toUi() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Conversations with preview data（审计 P2-14：聚合下推 SQL——消息表每次写入不再触发
     // 主线程 O(会话数×消息数) 的全量过滤；preview 语义不变，MAX(id) 即原"最后一条"）
@@ -103,13 +107,16 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     // （原兼容字段 conversations 已删：全工程无引用，审计 P3 死代码清理）
 
-    val templates: StateFlow<List<PromptTemplateEntity>> = chatRepository
+    // 审计 A1：templates/personaPresets 出口折 Ui 投影（mapper 在 VM 边界调用）
+    val templates: StateFlow<List<PromptTemplateUi>> = chatRepository
         .getAllTemplates()
+        .map { rows -> rows.map { it.toUi() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Persona presets
-    val personaPresets: StateFlow<List<PersonaPresetEntity>> = db.personaPresetDao()
+    val personaPresets: StateFlow<List<PersonaPresetUi>> = db.personaPresetDao()
         .getAllPresets()
+        .map { rows -> rows.map { it.toUi() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Model switching
@@ -259,9 +266,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val _isSearchingMessages = MutableStateFlow(false)
     val isSearchingMessages: StateFlow<Boolean> = _isSearchingMessages
 
-    /** 标题搜索命中（searchByTitle 原样结果，UI 以会话 id 收窄列表、保持既有排序/预览） */
-    private val _titleSearchResults = MutableStateFlow<List<ConversationEntity>>(emptyList())
-    val titleSearchResults: StateFlow<List<ConversationEntity>> = _titleSearchResults
+    /** 标题搜索命中（searchByTitle 折 [ConversationUi] 投影，UI 以会话 id 收窄列表、保持既有排序/预览） */
+    private val _titleSearchResults = MutableStateFlow<List<ConversationUi>>(emptyList())
+    val titleSearchResults: StateFlow<List<ConversationUi>> = _titleSearchResults
 
     /** 产出 [titleSearchResults] 的搜索词：UI 与当前输入对齐后才收窄列表，
      *  防抖窗口内不因旧结果/空集误显"无搜索结果" */
@@ -284,7 +291,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         try {
             // 异常兜底（审计 P2-10）：DB 异常沿 LaunchedEffect 上抛会直接崩溃，转为可见错误提示
             val titles = searchSafely(emptyList()) { chatRepository.searchConversationTitles(q) }
-            _titleSearchResults.value = titles
+            _titleSearchResults.value = titles.map { it.toUi() }
             _titleSearchQuery.value = q
 
             if (q.length < 2) {
@@ -347,9 +354,10 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun deleteTemplate(template: PromptTemplateEntity) {
+    fun deleteTemplate(template: PromptTemplateUi) {
         viewModelScope.launch {
-            chatRepository.deleteTemplate(template)
+            // 投影回还原（id/name/content/isDefault 全字段无损；isDefault 删除门在 repo 侧）
+            chatRepository.deleteTemplate(template.toEntity())
         }
     }
 
@@ -379,9 +387,10 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun deletePersonaPreset(preset: PersonaPresetEntity) {
+    fun deletePersonaPreset(preset: PersonaPresetUi) {
         viewModelScope.launch {
-            db.personaPresetDao().delete(preset)
+            // Room @Delete 按 id 删行：直接走 deleteById，投影缺失列（tagBlock 等）无需还原
+            db.personaPresetDao().deleteById(preset.id)
         }
     }
 

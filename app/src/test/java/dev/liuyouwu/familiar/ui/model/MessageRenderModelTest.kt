@@ -8,7 +8,6 @@ import dev.liuyouwu.familiar.core.llm.model.MessageMeta
 import dev.liuyouwu.familiar.core.llm.model.ReplyRef
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.core.llm.model.SenderInfo
-import dev.liuyouwu.familiar.data.local.entity.MessageEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -20,12 +19,14 @@ import org.junit.Test
  * 1. from() 块分拣（Thinking 聚合 / Text 列表 / ToolCall→卡片）；
  * 2. 工具卡片状态映射（未配对=RUNNING；TOOL_RESULT 行按 callId 回配=DONE；
  *    isError=true→ERROR，"已取消"→CANCELLED）；
- * 3. fromEntity() 实体适配（sender 三列 / content 单 textBlock / 存量 <think>
- *    前缀一次性拆分 / blocks 权威列 / 附件提取 / segments 透传 / meta）；
+ * 3. fromEntity() 旧链行适配（审计 A1 起入参为 MessageUi 投影：sender 三列 /
+ *    content 单 textBlock / 存量 <think> 前缀一次性拆分 / blocks 权威列 /
+ *    附件提取 / segments 透传 / meta）；
  * 4. segments 透传（from 与 fromEntity 两条入口）。
  */
 class MessageRenderModelTest {
 
+    /** 旧链行投影（MessageEntity 经 `MessageEntity.toUi()` 的同形构造，id 定 5 断言用） */
     private fun entity(
         role: String = "assistant",
         content: String = "",
@@ -43,9 +44,8 @@ class MessageRenderModelTest {
         promptTokens: Int? = null,
         completionTokens: Int? = null,
         cachedTokens: Int? = null,
-    ) = MessageEntity(
+    ) = MessageUi(
         id = 5L,
-        conversationId = 1L,
         role = role,
         content = content,
         blocks = blocks,

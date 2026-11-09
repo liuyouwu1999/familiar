@@ -15,10 +15,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import dev.liuyouwu.familiar.data.local.AppDatabase
 import dev.liuyouwu.familiar.data.repository.ChatRepository
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
-import dev.liuyouwu.familiar.pet.PetSkinStore
+import dev.liuyouwu.familiar.usecase.CreateConversationWithDefaults
 import dev.liuyouwu.familiar.ui.screen.chat.ChatScreen
 import dev.liuyouwu.familiar.ui.screen.chatlist.ChatListScreen
 import dev.liuyouwu.familiar.ui.screen.chatroom.ChatRoomEditScreen
@@ -28,6 +27,7 @@ import dev.liuyouwu.familiar.ui.screen.connection.ConnectionScreen
 import dev.liuyouwu.familiar.viewmodel.ChatListViewModel
 import dev.liuyouwu.familiar.viewmodel.ChatViewModel
 import dev.liuyouwu.familiar.viewmodel.ConnectionViewModel
+import dev.liuyouwu.familiar.viewmodel.ReviewViewModel
 import dev.liuyouwu.familiar.util.toUserLine
 import kotlinx.coroutines.launch
 
@@ -44,53 +44,31 @@ fun AppNavigation() {
     val updateViewModel: dev.liuyouwu.familiar.viewmodel.UpdateViewModel =
         viewModel(viewModelStoreOwner = activity)
 
-    // ===== 会话服务直连（P5 T4b：creator 壳删除）=====
-    // 原 ChatViewModel.createEli5Conversation/createFamiliarConversation/
-    // createTutorConversation 是会话服务（ChatRepository.createConversationWithSkill）的
-    // 薄壳，随壳删除，调用点在此直连。ChatRepository/SettingsRepository 均为无状态轻量
-    // 门面（前者包 AppDatabase 单例的 DAO，后者包 Context.dataStore 单例委托；各
-    // ViewModel/MainActivity 本就各自实例化），导航层就地装配一份。
-    val chatRepository = remember(activity) {
-        val db = AppDatabase.getInstance(activity)
-        ChatRepository(
-            conversationDao = db.conversationDao(),
-            messageDao = db.messageDao(),
-            promptTemplateDao = db.promptTemplateDao(),
-            db = db
-        )
-    }
+    // ===== 会话服务装配（审计 A1：创建逻辑下沉 use case，repo 走 create 工厂）=====
+    // ChatRepository/SettingsRepository 均为无状态轻量门面（前者包 AppDatabase 单例的
+    // DAO，后者包 Context.dataStore 单例委托；各 ViewModel/MainActivity 本就各自实例
+    // 化），导航层就地装配一份；AppDatabase 不再在 ui 层触碰（ChatRepository.create）。
+    val chatRepository = remember(activity) { ChatRepository.create(activity) }
     val settingsRepository = remember(activity) { SettingsRepository(activity.applicationContext) }
+    // D6 use case（审计 A1）：launchFamiliarCreation/launchEli5Creation 的创建逻辑
+    // 下沉 CreateConversationWithDefaults，根部单实例——列表页入口与桌宠 PetHub.
+    // onOpenChat 钩子复用同一份（记忆会话复用语义单点）。
+    val createConversation = remember(activity) {
+        CreateConversationWithDefaults(chatRepository, settingsRepository)
+    }
     // 入口防连点（原壳 creatingEli5/creatingFamiliar 标志随迁）：familiar 的两个入口
     // （桌宠 PetHub.onOpenChat / 列表页 onNewFamiliar）共用一个标志，双击/双入口不连建
     var creatingEli5 by remember { mutableStateOf(false) }
     var creatingFamiliar by remember { mutableStateOf(false) }
 
-    // 创建/进入主精灵陪伴会话（原 createFamiliarConversation 函数体随迁，行为等价）——
-    // 记忆会话复用：记住的会话仍存在则直接复用，不另建；设置播种：建会话时把卡的
-    // address/selfName 写进设置（"设置覆盖卡值"体系的初值来源，否则卡的"阿宅/小鱼"
-    // 自称会被设置默认"我"掩盖）；skillParams 只存 cardId，人设变量派生在 T6 会话装配时做；
-    // 失败经 ChatViewModel.reportError 走原 _error 通道（列表页 snackbar/桌宠 ERROR 桥）。
+    // 创建/进入主精灵陪伴会话：防连点 + 失败上报留导航层（失败经 ChatViewModel.
+    // reportError 走原 _error 通道：列表页 snackbar/桌宠 ERROR 桥），创建本体在 use case。
     fun launchFamiliarCreation(cardId: Long, onCreated: (Long) -> Unit) {
         if (creatingFamiliar) return
         creatingFamiliar = true
         coroutineScope.launch {
             try {
-                val remembered = settingsRepository.getFamiliarConversationId()
-                if (remembered != null && chatRepository.getConversationById(remembered) != null) {
-                    onCreated(remembered)
-                    return@launch
-                }
-                // 人设随皮肤（personaOf 四分支；cardId 参数保留兼容旧调用，恒写 0）
-                val preset = dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
-                    .personaOf(PetSkinStore.get(settingsRepository.getPetColor()))
-                val id = chatRepository.createConversationWithSkill(
-                    title = preset.name,
-                    skillId = dev.liuyouwu.familiar.skills.TypeInferer.FAMILIAR,
-                    skillParams = mapOf("cardId" to cardId.toString())
-                )
-                settingsRepository.setFamiliarConversationId(id)
-                settingsRepository.setFamiliarAddress(preset.address)
-                settingsRepository.setFamiliarSelfName(preset.selfName)
+                val id = createConversation.createFamiliar(cardId)
                 onCreated(id)
             } catch (e: Exception) {
                 android.util.Log.e("AppNavigation", "create familiar conversation failed", e)
@@ -101,18 +79,13 @@ fun AppNavigation() {
         }
     }
 
-    // 创建「讲人话」解释模式会话（原 createEli5Conversation 函数体随迁）：零参数 skill
-    // （paramsSchema 空 → skillParams 空表），防连点，失败走同一 _error 通道。
+    // 创建「讲人话」解释模式会话：防连点 + 失败上报留导航层（同上通道）。
     fun launchEli5Creation(onCreated: (Long) -> Unit) {
         if (creatingEli5) return
         creatingEli5 = true
         coroutineScope.launch {
             try {
-                val id = chatRepository.createConversationWithSkill(
-                    title = "讲人话问答",
-                    skillId = dev.liuyouwu.familiar.skills.TypeInferer.ELI5,
-                    skillParams = emptyMap()
-                )
+                val id = createConversation.createEli5()
                 onCreated(id)
             } catch (e: Exception) {
                 android.util.Log.e("AppNavigation", "create eli5 conversation failed", e)
@@ -141,10 +114,9 @@ fun AppNavigation() {
         // 全空不开屏只冒泡一句。挂根部与 onOpenChat 同理：停任意页长按桌宠都有复习入口。
         dev.liuyouwu.familiar.pet.PetHub.onOpenReview = {
             coroutineScope.launch {
-                val dao = dev.liuyouwu.familiar.data.local.AppDatabase
-                    .getInstance(activity).learningProfileDao()
-                val due = dao.due(System.currentTimeMillis())
-                    .ifEmpty { dao.allActive().take(3) }
+                // 审计 A1：直连 learningProfileDao 改走 repo 转发接口
+                val due = chatRepository.dueReviewEntries(System.currentTimeMillis())
+                    .ifEmpty { chatRepository.allActiveEntries().take(3) }
                     .take(3)
                 if (due.isNotEmpty()) {
                     navController.navigate("review/${due.joinToString(",") { it.id.toString() }}")
@@ -370,9 +342,10 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val entryIds = backStackEntry.arguments?.getString("entryIds")
                 ?.split(',')?.mapNotNull { it.toLongOrNull() }.orEmpty()
-            val reviewViewModel: dev.liuyouwu.familiar.ui.screen.review.ReviewViewModel = viewModel(
-                factory = dev.liuyouwu.familiar.ui.screen.review.ReviewViewModel.factory(
-                    dao = dev.liuyouwu.familiar.data.local.AppDatabase.getInstance(activity).learningProfileDao(),
+            val reviewViewModel: ReviewViewModel = viewModel(
+                factory = ReviewViewModel.factory(
+                    // 审计 A1：经 repo 转发取 DAO（ui 层零 data.local）
+                    dao = chatRepository.learningProfileDao,
                     entryIds = entryIds,
                     sessionFactory = chatViewModel::reviewSession,
                 )

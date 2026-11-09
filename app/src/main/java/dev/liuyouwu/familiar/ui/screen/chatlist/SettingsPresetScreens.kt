@@ -42,8 +42,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
-import dev.liuyouwu.familiar.data.local.entity.PromptTemplateEntity
+import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
+import dev.liuyouwu.familiar.ui.model.PromptTemplateUi
 import dev.liuyouwu.familiar.ui.theme.PixelBottomPanel
 import dev.liuyouwu.familiar.ui.theme.PixelButton
 import dev.liuyouwu.familiar.ui.theme.pixelSecondaryAlpha
@@ -60,17 +60,17 @@ internal class PresetDialogState {
     var showSelector by mutableStateOf(false)
     var showManager by mutableStateOf(false)
     var showCreateTemplate by mutableStateOf(false)
-    var editingTemplate by mutableStateOf<PromptTemplateEntity?>(null)
-    var deleteTemplateTarget by mutableStateOf<PromptTemplateEntity?>(null)
-    var deletePersonaTarget by mutableStateOf<PersonaPresetEntity?>(null)
+    var editingTemplate by mutableStateOf<PromptTemplateUi?>(null)
+    var deleteTemplateTarget by mutableStateOf<PromptTemplateUi?>(null)
+    var deletePersonaTarget by mutableStateOf<PersonaPresetUi?>(null)
 
     // 变量模板填充：选中的模板含 {{变量}} 占位符时弹出像素风填充面板
-    var templateFillTarget by mutableStateOf<PromptTemplateEntity?>(null)
+    var templateFillTarget by mutableStateOf<PromptTemplateUi?>(null)
     var templateVarValues by mutableStateOf<Map<String, String>>(emptyMap())
 
     // Persona preset editing（人设卡 v2 五输入域 + 隐藏保留的 selfName/address，
     // 保存时原样回传防抹掉）
-    var editingPersona by mutableStateOf<PersonaPresetEntity?>(null)
+    var editingPersona by mutableStateOf<PersonaPresetUi?>(null)
     var showCreatePersona by mutableStateOf(false)
     var personaName by mutableStateOf("")
     var personaPersonality by mutableStateOf("")
@@ -84,12 +84,12 @@ internal class PresetDialogState {
     var personaAddress by mutableStateOf("主人")
 
     /** 管理列表点编辑：编辑弹窗自持表单态，此处只装目标实体 */
-    fun beginEditTemplate(template: PromptTemplateEntity) {
+    fun beginEditTemplate(template: PromptTemplateUi) {
         editingTemplate = template
     }
 
     /** 管理列表点编辑：人设卡全字段装载（selfName/address 空值回默认，保存原样回传） */
-    fun beginEditPersona(preset: PersonaPresetEntity) {
+    fun beginEditPersona(preset: PersonaPresetUi) {
         editingPersona = preset
         personaName = preset.name
         personaPersonality = preset.personality
@@ -124,7 +124,7 @@ internal class PresetDialogState {
 internal fun PresetDialogs(
     state: PresetDialogState,
     viewModel: ChatListViewModel,
-    onStartFromTemplate: (PromptTemplateEntity) -> Unit,
+    onStartFromTemplate: (PromptTemplateUi) -> Unit,
     onCreated: (Long) -> Unit
 ) {
     val templates by viewModel.templates.collectAsStateWithLifecycle()
@@ -273,8 +273,8 @@ internal fun PresetDialogs(
 @Composable
 private fun TemplateSelectorDialog(
     visible: Boolean,
-    templates: List<PromptTemplateEntity>,
-    onSelect: (PromptTemplateEntity) -> Unit,
+    templates: List<PromptTemplateUi>,
+    onSelect: (PromptTemplateUi) -> Unit,
     onNoPrompt: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -353,7 +353,7 @@ private fun TemplateSelectorDialog(
 
 @Composable
 private fun TemplateFillPanel(
-    template: PromptTemplateEntity,
+    template: PromptTemplateUi,
     values: Map<String, String>,
     onValueChange: (String, String) -> Unit,
     onCancel: () -> Unit,
@@ -407,12 +407,12 @@ private fun TemplateFillPanel(
 @Composable
 private fun TemplateManagerDialog(
     visible: Boolean,
-    templates: List<PromptTemplateEntity>,
-    personaPresets: List<PersonaPresetEntity>,
-    onEditTemplate: (PromptTemplateEntity) -> Unit,
-    onDeleteTemplate: (PromptTemplateEntity) -> Unit,
-    onEditPersona: (PersonaPresetEntity) -> Unit,
-    onDeletePersona: (PersonaPresetEntity) -> Unit,
+    templates: List<PromptTemplateUi>,
+    personaPresets: List<PersonaPresetUi>,
+    onEditTemplate: (PromptTemplateUi) -> Unit,
+    onDeleteTemplate: (PromptTemplateUi) -> Unit,
+    onEditPersona: (PersonaPresetUi) -> Unit,
+    onDeletePersona: (PersonaPresetUi) -> Unit,
     onCreateTemplate: () -> Unit,
     onCreatePersona: () -> Unit,
     onDismiss: () -> Unit

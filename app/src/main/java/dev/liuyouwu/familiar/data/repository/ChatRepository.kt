@@ -270,6 +270,37 @@ class ChatRepository(
             }
             .distinctUntilChanged()
             .flowOn(Dispatchers.IO)
+
+    // ===== 学习画像复习入口（审计 A1：AppNavigation 根钩子改走 repo，ui 零 data.local）=====
+
+    /** 到期复习条目（LearningProfileDao.due 转发；AppNavigation.onOpenReview 兜底源之一） */
+    suspend fun dueReviewEntries(now: Long): List<dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity> =
+        db.learningProfileDao().due(now)
+
+    /** 未归档条目（LearningProfileDao.allActive 转发；due 空时取前 3 的兜底源） */
+    suspend fun allActiveEntries(): List<dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity> =
+        db.learningProfileDao().allActive()
+
+    /** ReviewViewModel 工厂注入用 DAO 转发（导航层不再直连 AppDatabase 取 DAO） */
+    val learningProfileDao: dev.liuyouwu.familiar.data.local.dao.LearningProfileDao
+        get() = db.learningProfileDao()
+
+    companion object {
+        /**
+         * 无 DAO 装配点入口（审计 A1）：AppDatabase 单例自取——AppNavigation 根部
+         * 装配走此工厂，不再在 ui 层触碰 AppDatabase。与主构造装配（VM 层各自
+         * getInstance 传 DAO）同库同 DAO，行为等价。
+         */
+        fun create(context: android.content.Context): ChatRepository {
+            val db = dev.liuyouwu.familiar.data.local.AppDatabase.getInstance(context)
+            return ChatRepository(
+                conversationDao = db.conversationDao(),
+                messageDao = db.messageDao(),
+                promptTemplateDao = db.promptTemplateDao(),
+                db = db
+            )
+        }
+    }
 }
 
 /**

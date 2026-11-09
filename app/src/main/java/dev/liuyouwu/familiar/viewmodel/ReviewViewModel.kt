@@ -1,5 +1,5 @@
-// ReviewViewModel.kt
-package dev.liuyouwu.familiar.ui.screen.review
+// ReviewViewModel.kt（审计 A1 自 ui/screen/review 迁包 viewmodel：VM 不住 ui）
+package dev.liuyouwu.familiar.viewmodel
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
@@ -11,7 +11,6 @@ import dev.liuyouwu.familiar.data.local.dao.LearningProfileDao
 import dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity
 import dev.liuyouwu.familiar.skills.profile.LearningReview
 import dev.liuyouwu.familiar.skills.profile.ReviewResultParser
-import dev.liuyouwu.familiar.viewmodel.ReviewChat
 import dev.liuyouwu.familiar.util.toUserLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow

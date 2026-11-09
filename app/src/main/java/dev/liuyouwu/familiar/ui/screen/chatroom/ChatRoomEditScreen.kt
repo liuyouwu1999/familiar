@@ -51,11 +51,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import dev.liuyouwu.familiar.data.local.entity.ChatRoomParticipantEntity
-import dev.liuyouwu.familiar.data.local.entity.PersonaPresetEntity
+import dev.liuyouwu.familiar.ui.model.ChatRoomParticipantUi
+import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
+import dev.liuyouwu.familiar.viewmodel.toUi
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -72,11 +73,11 @@ fun ChatRoomEditScreen(
     conversationId: Long,
     currentModelName: String,
     availableModels: List<ModelInfo>,
-    existingParticipants: List<ChatRoomParticipantEntity>,
-    customPresets: List<PersonaPresetEntity>,
+    existingParticipants: List<ChatRoomParticipantUi>,
+    customPresets: List<PersonaPresetUi>,
     // 保存改为协程回调：onResult(null)=成功（提示"已保存"），非 null=错误文案
     onSave: (List<ParticipantDraft>, (String?) -> Unit) -> Unit,
-    onSavePreset: (PersonaPresetEntity) -> Unit,
+    onSavePreset: (PersonaPresetUi) -> Unit,
     onBack: () -> Unit
 ) {
     var participants by remember { mutableStateOf<List<ParticipantDraft>>(emptyList()) }
@@ -209,7 +210,7 @@ fun ChatRoomEditScreen(
             draft = presetToSave!!,
             onSave = { name ->
                 val d = presetToSave!!
-                onSavePreset(PersonaPresetEntity(
+                onSavePreset(PersonaPresetUi(
                     name = name,
                     personality = d.personality,
                     colorHex = d.colorHex,
@@ -233,7 +234,7 @@ fun ChatRoomEditScreen(
 @Composable
 private fun EditableParticipantCard(
     participant: ParticipantDraft,
-    customPresets: List<PersonaPresetEntity>,
+    customPresets: List<PersonaPresetUi>,
     availableModels: List<String>,
     canRemove: Boolean,
     onRemove: () -> Unit,
@@ -334,7 +335,10 @@ private fun EditableParticipantCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val allPresets = customPresets.take(3).ifEmpty { DefaultPersonaCards.PRESETS.take(3) }
+                // 内置卡为 Entity 形态，折 Ui 投影后与自定义卡同列（审计 A1）
+                val allPresets = customPresets.take(3).ifEmpty {
+                    DefaultPersonaCards.PRESETS.take(3).map { it.toUi() }
+                }
                 allPresets.forEach { preset ->
                     Card(
                         modifier = Modifier
