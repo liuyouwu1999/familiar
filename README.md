@@ -138,6 +138,14 @@ cd familiar
 
 跑单元测试：`./gradlew :app:testDebugUnitTest`。
 
+打包发布用 [scripts/release.sh](scripts/release.sh)（校验 tag、生成 SHA256SUMS）：自动核对 tag `v<versionName>` 与 `versionName` 一致、跑单元测试、打包并把产物改名为 `Familiar-<版本>.apk`、生成 `SHA256SUMS.txt`；加 `--dry-run` 只预览资产命名，不构建。
+
+## 安全
+
+- **debug 构建复用 release 签名**：本机配置了 `keystore.properties` 时，debug 构建也用正式签名。动机：调试包可以直接覆盖安装正式版而不丢本地数据（聊天记录等）；这是「开发便利」与「debug/release 包身份可区分」之间的取舍，代价是两者签名一致。
+- **keystore 与密码不入库**：密钥库（`*.jks` / `*.keystore`）与 `keystore.properties`（含密码）均在 `.gitignore` 中，仓库与 Release 产物都不含任何签名材料。
+- **拿到 debug 包的风险提示**：debug 包默认开启 `debuggable`，持有者通过 adb 即可读取应用私有数据（含聊天记录），且它与正式版同签名、可直接覆盖安装正式版。请勿把 debug 包发给不受信任的人；安装请一律走本仓库 [Releases](https://github.com/liuyouwu1999/familiar/releases) 官方渠道，不要安装来路不明的任何「Familiar」APK。
+
 ## 参与贡献
 
 欢迎提 Issue 反馈 bug 和功能建议。PR 请先开 Issue 讨论方案，提交信息建议遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)。

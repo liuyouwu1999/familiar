@@ -138,6 +138,14 @@ Without `keystore.properties` the build falls back to debug signing, so a fresh 
 
 Run unit tests: `./gradlew :app:testDebugUnitTest`.
 
+For packaging releases, use [scripts/release.sh](scripts/release.sh) (tag check + SHA256SUMS): it verifies that tag `v<versionName>` matches `versionName`, runs the unit tests, builds and renames the artifact to `Familiar-<version>.apk`, and generates `SHA256SUMS.txt`; add `--dry-run` to preview the asset naming without building.
+
+## Security
+
+- **Debug builds reuse the release signing key**: on machines with `keystore.properties`, debug builds are signed with the release key too. Rationale: a debug build can be installed straight over the release one without losing local data (chats included) — a trade-off of development convenience against being able to tell debug and release builds apart by signature, since the two end up signed identically.
+- **Keystore and passwords never enter the repository**: keystore files (`*.jks` / `*.keystore`) and `keystore.properties` (which holds the passwords) are gitignored; neither the repository nor the release artifacts contain any signing material.
+- **If you obtain a debug APK**: debug builds are `debuggable` by default — anyone holding one can read the app's private data (including chats) over adb, and it shares the release signature so it installs directly over the release build. Do not pass debug APKs to untrusted parties; only install from the official [Releases](https://github.com/liuyouwu1999/familiar/releases) page of this repository, and never install a "Familiar" APK from unverified sources.
+
 ## Contributing
 
 Issues for bugs and feature requests are welcome. For PRs, please open an issue first to discuss the approach; commit messages should follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
