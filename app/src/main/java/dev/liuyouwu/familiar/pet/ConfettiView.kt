@@ -15,29 +15,35 @@ class ConfettiView(context: Context, private val density: Float) : View(context)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var tick: Runnable? = null
     private var progress = 1f
-    private val colors = intArrayOf(
-        0xFFF5A623.toInt(), 0xFF4C8DF6.toInt(), 0xFF7ED321.toInt(), 0xFFFF6F91.toInt(), 0xFF9B59B6.toInt()
-    )
+    private val colors =
+        intArrayOf(
+            0xFFF5A623.toInt(),
+            0xFF4C8DF6.toInt(),
+            0xFF7ED321.toInt(),
+            0xFFFF6F91.toInt(),
+            0xFF9B59B6.toInt(),
+        )
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private fun dp(v: Float): Int = (v * density).toInt()
 
     fun burst() {
-        stop()   // 重入安全：上一轮没播完也先收干净再开新一轮
+        stop() // 重入安全：上一轮没播完也先收干净再开新一轮
         progress = 0f
         visibility = View.VISIBLE
         val start = SystemClock.uptimeMillis()
-        val t = object : Runnable {
-            override fun run() {
-                progress = ((SystemClock.uptimeMillis() - start) / 900f).coerceAtMost(1f)
-                invalidate()
-                if (progress < 1f) {
-                    mainHandler.postDelayed(this, 16L)
-                } else {
-                    visibility = View.GONE
+        val t =
+            object : Runnable {
+                override fun run() {
+                    progress = ((SystemClock.uptimeMillis() - start) / 900f).coerceAtMost(1f)
+                    invalidate()
+                    if (progress < 1f) {
+                        mainHandler.postDelayed(this, 16L)
+                    } else {
+                        visibility = View.GONE
+                    }
                 }
             }
-        }
         tick = t
         mainHandler.post(t)
     }

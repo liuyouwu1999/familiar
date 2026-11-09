@@ -17,8 +17,8 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import kotlin.math.abs
 import kotlinx.coroutines.sync.Mutex
+import kotlin.math.abs
 
 /** 触摸手势的宠物业务反应集（审计 A4 拆件）：手势识别（双击窗口/350ms/2500f 阈值、
  *  tap 流式守卫读态）与窗口操作归控制器；开口类业务的副作用全部归 Service——
@@ -69,14 +69,16 @@ class OverlayWindowController(
     private val touchHooks: PetTouchHooks =
         PetTouchHooks({}, {}, {}, {}, {}, {}, { _ -> }, {}, { _, _ -> }),
 ) {
-
     private val density get() = context.resources.displayMetrics.density
+
     private fun dp(v: Float): Int = (v * density).toInt()
+
     private fun dpf(v: Float): Float = v * density
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var root: FrameLayout? = null
+
     /** 鱼身视图（帧动画/触摸宿主）与撒花视图：控制器创建持有、生命周期随挂载态，Service 只读接线 */
     var fishView: ImageView? = null
         private set
@@ -85,6 +87,7 @@ class OverlayWindowController(
 
     private var wm: WindowManager? = null
     private var winParams: WindowManager.LayoutParams? = null
+
     // 泡与菜单是独立悬浮窗（不再塞进鱼窗里伸缩高度）：鱼窗恒为鱼身大小，
     // 泡/菜单作为独立窗口可以整体钳在屏幕内——鱼贴边时泡不再被裁出界。
     // 泡窗 FLAG_NOT_TOUCHABLE 纯展示（手势穿透，与应用内旧版"泡区不挡点击"一致）；
@@ -92,8 +95,10 @@ class OverlayWindowController(
     // 菜单窗可触摸。z 序：后 add 的在上（泡/菜单盖住鱼头顶的沉入部分）
     private var bubbleWin: BubbleView? = null
     private var bubbleWinParams: WindowManager.LayoutParams? = null
+
     /** 当前泡是否复习变体（flags/点击监听只在创建路径装，变体切换走拆掉重建） */
     private var bubbleIsReview = false
+
     /** 当前泡是否打盹（Zzz）变体：重钳位时泡底下沉量取此值（原实现读 Service 的
      *  currentMood==SLEEP；拆件后由 showBubble 入参维护，有泡时两者恒等价） */
     private var bubbleSleep = false
@@ -105,6 +110,7 @@ class OverlayWindowController(
     private var fishPx = 0
     private var screenW = 0
     private var screenH = 0
+
     // 纵向钳制原点偏移（挂载后 calibrateContentBounds 用 rootWindowInsets 实测校准）：
     // NO_LIMITS 后鱼窗请求坐标的挂载原点在状态栏下，物理底=screenH——不知道这个
     // 偏移则纵向贴边数学全错（模拟器实测 originTop=136）。x 无偏移
@@ -155,37 +161,40 @@ class OverlayWindowController(
 
         val (fx, fy) = initialRatio ?: 0.92f to 0.68f
 
-        val wp = WindowManager.LayoutParams(
-            fishPx,
-            fishPx,   // 窗口恒=鱼身大小（泡/菜单独立窗口，永不伸缩）
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            // NO_LIMITS 是贴边手感的前提：WM 会把无此 flag 的悬浮窗静默钳回屏内
-            // （模拟器 dumpsys 实证：请求 x=869 → 实际 frame x=695=屏宽-窗宽），
-            // 贴边所需的透明边距出屏量全成空文；加上后请求坐标才真实落地（原点偏移
-            // 由 calibrateContentBounds 实测校准，钳制语义=角色贴缘不出屏）
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // 保存/恢复同一口径：窗口顶=鱼可视顶（恒成立，泡/菜单不再改变窗口高度）
-            x = PetWindowBounds.clampX((fx * (screenW - fishPx)).toInt(), screenW, fishPx)
-            y = PetWindowBounds.clampY((fy * (screenH - fishPx)).toInt(), originTop, screenH, fishPx)
-        }
+        val wp =
+            WindowManager.LayoutParams(
+                // 窗口恒=鱼身大小（泡/菜单独立窗口，永不伸缩）
+                fishPx,
+                fishPx,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                // NO_LIMITS 是贴边手感的前提：WM 会把无此 flag 的悬浮窗静默钳回屏内
+                // （模拟器 dumpsys 实证：请求 x=869 → 实际 frame x=695=屏宽-窗宽），
+                // 贴边所需的透明边距出屏量全成空文；加上后请求坐标才真实落地（原点偏移
+                // 由 calibrateContentBounds 实测校准，钳制语义=角色贴缘不出屏）
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                // 保存/恢复同一口径：窗口顶=鱼可视顶（恒成立，泡/菜单不再改变窗口高度）
+                x = PetWindowBounds.clampX((fx * (screenW - fishPx)).toInt(), screenW, fishPx)
+                y = PetWindowBounds.clampY((fy * (screenH - fishPx)).toInt(), originTop, screenH, fishPx)
+            }
         winParams = wp
 
         val rootLayout = FrameLayout(context)
         val confetti = ConfettiView(context, density).apply { visibility = View.GONE }
         rootLayout.addView(
             confetti,
-            FrameLayout.LayoutParams(fishPx, fishPx, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            FrameLayout.LayoutParams(fishPx, fishPx, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL),
         )
-        val iv = ImageView(context).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }
+        val iv =
+            ImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
         rootLayout.addView(
             iv,
-            FrameLayout.LayoutParams(fishPx, fishPx, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            FrameLayout.LayoutParams(fishPx, fishPx, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL),
         )
 
         runCatching { wm?.addView(rootLayout, wp) }
@@ -211,7 +220,7 @@ class OverlayWindowController(
     /** 摘除全部窗口（泡/菜单/撒花收口 + 鱼窗摘除）并复位挂载态。
      *  Service 先自行停帧动画/动画器，再调本方法 */
     fun detachWindows() {
-        dragTracker?.recycle()   // 拖动中途服务被收窗：没有后续事件派发，必须手动回收
+        dragTracker?.recycle() // 拖动中途服务被收窗：没有后续事件派发，必须手动回收
         dragTracker = null
         hideBubble()
         closeMenu()
@@ -228,8 +237,12 @@ class OverlayWindowController(
     /** 冒泡。review=true 为复习泡变体（spec §6，mood=REVIEW 专用）：
      *  泡窗去 FLAG_NOT_TOUCHABLE（泡体可点，点击=收泡+跳学习画像），沉降 12s 由 render 管；
      *  review=false 与旧版闲聊泡行为完全一致（flags 同款、手势穿透、原位更新路径原样） */
-    fun showBubble(text: String, sleep: Boolean, review: Boolean = false) {
-        winParams ?: return   // 挂载守卫：服务未挂窗时不冒泡
+    fun showBubble(
+        text: String,
+        sleep: Boolean,
+        review: Boolean = false,
+    ) {
+        winParams ?: return // 挂载守卫：服务未挂窗时不冒泡
         bubbleSleep = sleep
         closeMenu()
         val existing = bubbleWin
@@ -264,20 +277,21 @@ class OverlayWindowController(
                 onReviewBubbleTap()
             }
         }
-        val p = WindowManager.LayoutParams(
-            b.fitContent((screenW * 0.6f).toInt()),
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            // 不可触摸：泡区手势穿透（应用内旧版同语义）。alpha 0.99 绕开
-            // Android 12+ 对"全不透明透传窗"的不可信触摸限制。
-            // 复习泡变体去掉 FLAG_NOT_TOUCHABLE：泡体收点击跳复习，泡外区域照常穿透
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                (if (review) 0 else WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE),
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            alpha = 0.99f
-        }
+        val p =
+            WindowManager.LayoutParams(
+                b.fitContent((screenW * 0.6f).toInt()),
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                // 不可触摸：泡区手势穿透（应用内旧版同语义）。alpha 0.99 绕开
+                // Android 12+ 对"全不透明透传窗"的不可信触摸限制。
+                // 复习泡变体去掉 FLAG_NOT_TOUCHABLE：泡体收点击跳复习，泡外区域照常穿透
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    (if (review) 0 else WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE),
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                alpha = 0.99f
+            }
         bubbleWinParams = p
         layoutBubbleParams(p, b, measuredHeightOf(b), sleep)
         runCatching { wm?.addView(b, p) }
@@ -303,7 +317,12 @@ class OverlayWindowController(
      *  垂直贴鱼头、泡底下沉 overlap 与鱼身重叠；打盹泡再沉 26dp 贴住蜷姿。
      *  view 显式传入：新建路径调用时 bubbleWin 还没赋值，尾巴指向不能靠它取（审计低-3）。
      *  水平以泡窗实际宽度（fitContent 定档，存于 p.width）居中，不再写死鱼身宽 */
-    private fun layoutBubbleParams(p: WindowManager.LayoutParams, view: BubbleView, bubbleH: Int, sleep: Boolean) {
+    private fun layoutBubbleParams(
+        p: WindowManager.LayoutParams,
+        view: BubbleView,
+        bubbleH: Int,
+        sleep: Boolean,
+    ) {
         val wp = winParams ?: return
         val w = if (p.width > 0) p.width else fishPx
         val fishCx = wp.x + fishPx / 2f
@@ -334,13 +353,14 @@ class OverlayWindowController(
         }
         hideBubble()
         val m = build()
-        val p = WindowManager.LayoutParams(
-            fishPx,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.TOP or Gravity.START }
+        val p =
+            WindowManager.LayoutParams(
+                fishPx,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT,
+            ).apply { gravity = Gravity.TOP or Gravity.START }
         menuWinParams = p
         layoutMenuParams(p, measuredHeightOf(m))
         runCatching { wm?.addView(m, p) }
@@ -357,7 +377,10 @@ class OverlayWindowController(
     }
 
     /** 菜单窗位置：水平随鱼、钳在屏内；垂直在鱼头顶上方 6dp，顶不出屏时贴屏顶 */
-    private fun layoutMenuParams(p: WindowManager.LayoutParams, menuH: Int) {
+    private fun layoutMenuParams(
+        p: WindowManager.LayoutParams,
+        menuH: Int,
+    ) {
         val wp = winParams ?: return
         p.x = wp.x.coerceIn(0, (screenW - fishPx).coerceAtLeast(0))
         p.y = (wp.y - menuH - dp(6f)).coerceIn(0, (screenH - menuH).coerceAtLeast(0))
@@ -395,12 +418,15 @@ class OverlayWindowController(
     /** 拖动落点：标准偏移拖动（按住哪里，哪里就不跳——手指相对鱼身的位置全程不变），
      *  钳制统一走 PetWindowBounds（与 syncWindowLayout/attach 同口径），都拖得回来。
      *  必须传窗口根视图更新：传子视图会更新失败、视图树写坏整窗消失（历史恶性 bug） */
-    fun applyDrag(nx: Int, ny: Int) {
+    fun applyDrag(
+        nx: Int,
+        ny: Int,
+    ) {
         val wp = winParams ?: return
         wp.x = PetWindowBounds.clampX(nx, screenW, fishPx)
         wp.y = PetWindowBounds.clampY(ny, originTop, screenH, fishPx)
         runCatching { root?.let { wm?.updateViewLayout(it, wp) } }
-        repositionOverlays()   // 泡/菜单跟随，整体钳在屏内
+        repositionOverlays() // 泡/菜单跟随，整体钳在屏内
     }
 
     /** 鱼窗当前请求坐标（拖动锚定口径）。多指场景 rawX/rawY 恒指 0 号指针，换指锚定
@@ -435,9 +461,11 @@ class OverlayWindowController(
                 screenW = b.width()
                 screenH = b.height()
             } else {
-                @Suppress("DEPRECATION") val d = wmgr.defaultDisplay
+                @Suppress("DEPRECATION")
+                val d = wmgr.defaultDisplay
                 val m = DisplayMetrics()
-                @Suppress("DEPRECATION") d.getRealMetrics(m)
+                @Suppress("DEPRECATION")
+                d.getRealMetrics(m)
                 screenW = m.widthPixels
                 screenH = m.heightPixels
             }
@@ -452,10 +480,11 @@ class OverlayWindowController(
         originTop = statusBarFallback()
     }
 
-    private fun statusBarFallback(): Int = runCatching {
-        val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        if (id > 0) context.resources.getDimensionPixelSize(id) else 0
-    }.getOrDefault(0)
+    private fun statusBarFallback(): Int =
+        runCatching {
+            val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (id > 0) context.resources.getDimensionPixelSize(id) else 0
+        }.getOrDefault(0)
 
     /** 挂载后实测校准纵向原点偏移：NO_LIMITS 悬浮窗的 rootWindowInsets 恒为 0（实测），
      *  改用 locationOnScreen - 请求 y 作差（贴附原点=状态栏高，模拟器实测 136）。
@@ -466,12 +495,14 @@ class OverlayWindowController(
         if (r.isLaidOut && applyOriginCalibration(r)) return
         val vto = r.viewTreeObserver
         if (!vto.isAlive) return
-        vto.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                if (r.viewTreeObserver.isAlive) r.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                applyOriginCalibration(r)
-            }
-        })
+        vto.addOnGlobalLayoutListener(
+            object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    if (r.viewTreeObserver.isAlive) r.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    applyOriginCalibration(r)
+                }
+            },
+        )
     }
 
     private fun applyOriginCalibration(r: View): Boolean {
@@ -491,7 +522,7 @@ class OverlayWindowController(
         val w = if (v.measuredWidth > 0) v.measuredWidth else fishPx
         v.measure(
             View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         return v.measuredHeight
     }
@@ -518,7 +549,10 @@ class OverlayWindowController(
         // 原点垫上状态栏/挖孔 inset，请求坐标与视图原点差一大截——直接拿请求坐标
         // 当视图原点会抓哪都先跳一截（拖动抓取点跳变的真凶）。偏移被自动吸收，
         // 且全程只施加增量。
-        fun reAnchor(ev: MotionEvent, idx: Int) {
+        fun reAnchor(
+            ev: MotionEvent,
+            idx: Int,
+        ) {
             val (startX, startY) = fishWindowPos() ?: return
             val originX = ev.rawX - ev.getX(0)
             val originY = ev.rawY - ev.getY(0)
@@ -539,15 +573,16 @@ class OverlayWindowController(
                     reAnchor(ev, ev.actionIndex)
                     moved = false
                     longPressDone = false
-                    longPressPending = Runnable {
-                        if (!moved) {
-                            longPressDone = true
-                            singleTapPending?.let { mainHandler.removeCallbacks(it) }
-                            touchHooks.wake()
-                            toggleMenu(menuProvider)
-                            touchHooks.noteTouch()   // 长按开菜单即互动（菜单无守卫，任意态可弹）
+                    longPressPending =
+                        Runnable {
+                            if (!moved) {
+                                longPressDone = true
+                                singleTapPending?.let { mainHandler.removeCallbacks(it) }
+                                touchHooks.wake()
+                                toggleMenu(menuProvider)
+                                touchHooks.noteTouch() // 长按开菜单即互动（菜单无守卫，任意态可弹）
+                            }
                         }
-                    }
                     mainHandler.postDelayed(longPressPending!!, ViewConfiguration.getLongPressTimeout().toLong())
                     true
                 }
@@ -565,10 +600,10 @@ class OverlayWindowController(
                         moved = true
                         longPressPending?.let { mainHandler.removeCallbacks(it) }
                         singleTapPending?.let { mainHandler.removeCallbacks(it) }
-                        touchHooks.startSwing()   // 真拖起来才挣扎；轻点不晃
+                        touchHooks.startSwing() // 真拖起来才挣扎；轻点不晃
                     }
                     if (moved) {
-                        applyDrag(nx, ny)   // 标准偏移拖动：按住哪里，哪里就不跳（见 applyDrag 注释）
+                        applyDrag(nx, ny) // 标准偏移拖动：按住哪里，哪里就不跳（见 applyDrag 注释）
                     }
                     true
                 }
@@ -605,8 +640,8 @@ class OverlayWindowController(
                         val vx = dragTracker?.xVelocity ?: 0f
                         val vy = dragTracker?.yVelocity ?: 0f
                         if (abs(vx) > 2500f || abs(vy) > 2500f) {
-                            touchHooks.onFling()   // 甩远吐槽（流式守卫 + TURN 台词裁定归 Service）
-                            touchHooks.squashWobble()   // 压扁弹回：纯视觉缩放，不改状态，流式期间也安全
+                            touchHooks.onFling() // 甩远吐槽（流式守卫 + TURN 台词裁定归 Service）
+                            touchHooks.squashWobble() // 压扁弹回：纯视觉缩放，不改状态，流式期间也安全
                         }
                         // 先重钳+更新窗口，再按同步后的鱼位置保存（窗口顶=鱼顶），口径一致
                         syncWindowLayout()

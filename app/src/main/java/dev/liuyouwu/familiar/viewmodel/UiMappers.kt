@@ -19,12 +19,10 @@ import dev.liuyouwu.familiar.ui.model.PromptTemplateUi
  * 为既有依赖方向，不让 data 层反向 import ui.model。
  */
 
-fun PromptTemplateEntity.toUi(): PromptTemplateUi =
-    PromptTemplateUi(id = id, name = name, content = content, isDefault = isDefault)
+fun PromptTemplateEntity.toUi(): PromptTemplateUi = PromptTemplateUi(id = id, name = name, content = content, isDefault = isDefault)
 
 /** 模板全字段都在投影内（删除路径 isDefault 门 + Room @Delete 按 id），roundtrip 无损 */
-fun PromptTemplateUi.toEntity(): PromptTemplateEntity =
-    PromptTemplateEntity(id = id, name = name, content = content, isDefault = isDefault)
+fun PromptTemplateUi.toEntity(): PromptTemplateEntity = PromptTemplateEntity(id = id, name = name, content = content, isDefault = isDefault)
 
 fun PersonaPresetEntity.toUi(): PersonaPresetUi =
     PersonaPresetUi(

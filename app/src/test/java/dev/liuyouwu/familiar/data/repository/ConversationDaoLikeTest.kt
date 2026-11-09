@@ -13,7 +13,6 @@ import org.junit.Test
  * 全量回归代偿见 task-2.7 报告。
  */
 class ConversationDaoLikeTest {
-
     @Test
     fun `plain text passes through unchanged`() {
         assertEquals("hello", likeEscape("hello"))

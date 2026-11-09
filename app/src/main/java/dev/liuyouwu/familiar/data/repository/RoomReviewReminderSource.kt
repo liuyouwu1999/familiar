@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.Flow
  *  dueCount/dueTop 均带 LearningReview.isNudgeable 的 2h 静默过滤（原 ambientLoop
  *  的 filter 口径）：DAO due() 只管「到期+未归档」，距上次提醒 <2h 的条目不催 */
 class RoomReviewReminderSource(context: Context) : ReviewReminderPort {
-
     private val dao = AppDatabase.getInstance(context).learningProfileDao()
 
     override fun observeHasActive(): Flow<Boolean> = dao.hasActive()
@@ -29,5 +28,8 @@ class RoomReviewReminderSource(context: Context) : ReviewReminderPort {
             ?.let { ReviewDueEntry(id = it.id, topic = it.topic) }
     }
 
-    override suspend fun markReminded(id: Long, at: Long) = dao.markReminded(id, at)
+    override suspend fun markReminded(
+        id: Long,
+        at: Long,
+    ) = dao.markReminded(id, at)
 }

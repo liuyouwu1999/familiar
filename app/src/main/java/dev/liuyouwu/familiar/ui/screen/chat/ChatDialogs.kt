@@ -39,7 +39,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
@@ -47,6 +46,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
 import dev.liuyouwu.familiar.ui.component.ContextCapacityPanel
 import dev.liuyouwu.familiar.ui.component.PixelModelPickerDialog
@@ -60,7 +60,7 @@ import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateKeeper
 import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateResponse
 import kotlinx.coroutines.flow.StateFlow
 
-/**
+/*
  * ChatScreen 对话框拆出（审计 A3）：brief 清单 6 个 dialog + 指标核对阶段补搬的
  * 记忆框/导出格式选择框（HEAD :1522/:1498 一带，Step 2「检查 dialog 是否漏搬」），
  * 各自私有（模块内）composable。签名 = 所需 state + 回调 lambda；仅本对话框消费的
@@ -122,30 +122,36 @@ internal fun ChatSettingsDialog(
                 val displayedModels = if (modelsExpanded) selectableModels else selectableModels.take(4)
                 items(displayedModels) { model ->
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .heightIn(min = 48.dp)
-                            .clickable { onModelSelected(model.id.orEmpty()) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if ((model.id ?: "") == currentModel) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        )
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .heightIn(min = 48.dp)
+                                .clickable { onModelSelected(model.id.orEmpty()) },
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor =
+                                    if ((model.id ?: "") == currentModel) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    },
+                            ),
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(
                                 selected = (model.id ?: "") == currentModel,
-                                onClick = { onModelSelected(model.id.orEmpty()) }
+                                onClick = { onModelSelected(model.id.orEmpty()) },
                             )
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(
                                 text = model.id.orEmpty(),
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
@@ -156,11 +162,12 @@ internal fun ChatSettingsDialog(
                     item {
                         TextButton(
                             onClick = { modelsExpanded = !modelsExpanded },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(
                                 imageVector = if (modelsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = null // 装饰性：旁有"展开/收起"文字
+                                // 装饰性：旁有"展开/收起"文字
+                                contentDescription = null,
                             )
                             Spacer(modifier = Modifier.size(4.dp))
                             Text(if (modelsExpanded) "收起 (${selectableModels.size - 4} 个)" else "展开全部 (${selectableModels.size - 4} 个)")
@@ -175,7 +182,7 @@ internal fun ChatSettingsDialog(
                     Spacer(modifier = Modifier.size(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         OutlinedTextField(
                             value = editingFrameCount,
@@ -183,7 +190,7 @@ internal fun ChatSettingsDialog(
                             label = { Text("帧数") },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(shape = RectangleShape, border = BorderStroke(1.dp, WoodBorder), onClick = {
@@ -198,7 +205,7 @@ internal fun ChatSettingsDialog(
                     Text(
                         "采集帧数 1-50，当前 $frameCount",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha())
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha()),
                     )
                 }
 
@@ -209,7 +216,7 @@ internal fun ChatSettingsDialog(
                     Spacer(modifier = Modifier.size(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         OutlinedTextField(
                             value = editingMaxContext,
@@ -217,13 +224,17 @@ internal fun ChatSettingsDialog(
                             label = { Text("Token 数") },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(shape = RectangleShape, border = BorderStroke(1.dp, WoodBorder), onClick = {
                             keyboardController?.hide()
-                            val ctx = editingMaxContext.toIntOrNull()?.coerceIn(512, dev.liuyouwu.familiar.data.repository.SettingsRepository.MAX_CONTEXT_LIMIT)
-                                ?: dev.liuyouwu.familiar.data.repository.SettingsRepository.DEFAULT_MAX_CONTEXT
+                            val ctx =
+                                editingMaxContext.toIntOrNull()?.coerceIn(
+                                    512,
+                                    dev.liuyouwu.familiar.data.repository.SettingsRepository.MAX_CONTEXT_LIMIT,
+                                )
+                                    ?: dev.liuyouwu.familiar.data.repository.SettingsRepository.DEFAULT_MAX_CONTEXT
                             editingMaxContext = ctx.toString()
                             onMaxContextSaved(ctx)
                         }) {
@@ -233,7 +244,7 @@ internal fun ChatSettingsDialog(
                     Text(
                         "上下文上限 512-${dev.liuyouwu.familiar.data.repository.SettingsRepository.MAX_CONTEXT_LIMIT}，当前 $maxCtx",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha())
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha()),
                     )
                 }
 
@@ -248,7 +259,7 @@ internal fun ChatSettingsDialog(
                     if (capacity != null && capacity.maxContext > 0) {
                         ContextCapacityPanel(
                             breakdown = capacity,
-                            cacheHitPercent = lastCacheHit
+                            cacheHitPercent = lastCacheHit,
                         )
                     }
                 }
@@ -261,37 +272,40 @@ internal fun ChatSettingsDialog(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                        horizontalArrangement = Arrangement.Center,
                     ) {
                         OutlinedButton(
                             shape = RectangleShape,
                             onClick = { onChatRoomMaxRepliesChanged(roomMaxReplies - 1) },
-                            enabled = roomMaxReplies > 1
+                            enabled = roomMaxReplies > 1,
                         ) { Text("−") }
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
                             "$roomMaxReplies",
-                            style = MaterialTheme.typography.titleMedium
+                            style = MaterialTheme.typography.titleMedium,
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         OutlinedButton(
                             shape = RectangleShape,
                             onClick = { onChatRoomMaxRepliesChanged(roomMaxReplies + 1) },
-                            enabled = roomMaxReplies < 6
+                            enabled = roomMaxReplies < 6,
                         ) { Text("+") }
                     }
                     Text(
-                        if (isChatRoom) "你每发一条消息，主持人最多安排几个 AI 接话"
-                        else "仅聊天室生效（当前为普通会话）",
+                        if (isChatRoom) {
+                            "你每发一条消息，主持人最多安排几个 AI 接话"
+                        } else {
+                            "仅聊天室生效（当前为普通会话）"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha())
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha()),
                     )
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("关闭") }
-        }
+        },
     )
 }
 
@@ -310,9 +324,10 @@ internal fun ChatPromptEditDialog(
         title = { Text("系统提示词") },
         text = {
             OutlinedTextField(
-                value = prompt, onValueChange = onPromptChange,
+                value = prompt,
+                onValueChange = onPromptChange,
                 modifier = Modifier.fillMaxWidth().height(200.dp),
-                placeholder = { Text("输入系统提示词…") }
+                placeholder = { Text("输入系统提示词…") },
             )
         },
         confirmButton = {
@@ -321,7 +336,7 @@ internal fun ChatPromptEditDialog(
                 onSave(prompt)
             }) { Text("保存") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
@@ -341,7 +356,7 @@ internal fun ChatClearConfirmDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
-        }
+        },
     )
 }
 
@@ -366,13 +381,13 @@ internal fun ChatToolApprovalDialog(
                     Text(
                         "目标主机：$it",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
                     "AI 请求执行上述操作，允许吗？",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
             }
         },
@@ -390,7 +405,7 @@ internal fun ChatToolApprovalDialog(
             TextButton(onClick = { onRespond(ToolGateResponse.DENY) }) {
                 Text("拒绝", color = MaterialTheme.colorScheme.error)
             }
-        }
+        },
     )
 }
 
@@ -404,15 +419,16 @@ internal fun ChatRetryModelPickerDialog(
     onDismiss: () -> Unit,
     onSelected: (String) -> Unit,
 ) {
-    val retryModels = remember(availableModels) {
-        filterSelectableModels(availableModels).mapNotNull { it.id }
-    }
+    val retryModels =
+        remember(availableModels) {
+            filterSelectableModels(availableModels).mapNotNull { it.id }
+        }
     PixelModelPickerDialog(
         title = "换模型重试",
         models = retryModels,
         currentModel = currentModel,
         onDismiss = onDismiss,
-        onSelected = onSelected
+        onSelected = onSelected,
     )
 }
 
@@ -425,15 +441,16 @@ internal fun ChatModelSwitcherDialog(
     onDismiss: () -> Unit,
     onSelected: (String) -> Unit,
 ) {
-    val switcherModels = remember(availableModels) {
-        filterSelectableModels(availableModels).mapNotNull { it.id }
-    }
+    val switcherModels =
+        remember(availableModels) {
+            filterSelectableModels(availableModels).mapNotNull { it.id }
+        }
     PixelModelPickerDialog(
         title = "切换模型（立即生效）",
         models = switcherModels,
         currentModel = currentModel,
         onDismiss = onDismiss,
-        onSelected = onSelected
+        onSelected = onSelected,
     )
 }
 
@@ -452,14 +469,15 @@ internal fun ChatMemoryDialog(
         title = { Text("大肥鱼的记忆") },
         text = {
             Column(
-                modifier = Modifier
-                    .heightIn(max = 380.dp)
-                    .verticalScroll(rememberScrollState())
+                modifier =
+                    Modifier
+                        .heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState()),
             ) {
                 Text(
                     memoryText ?: "读取中…",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
@@ -469,9 +487,9 @@ internal fun ChatMemoryDialog(
         dismissButton = {
             TextButton(
                 enabled = memoryText != null,
-                onClick = onCopy
+                onClick = onCopy,
             ) { Text("复制") }
-        }
+        },
     )
 }
 
@@ -490,7 +508,7 @@ internal fun ChatExportChooserDialog(
             title = "Markdown",
             subtitle = "保存为 .md 文件",
             iconBox = MaterialTheme.colorScheme.primary,
-            onClick = onExportMarkdown
+            onClick = onExportMarkdown,
         )
         Spacer(modifier = Modifier.height(2.dp))
         PixelModeRow(
@@ -498,7 +516,7 @@ internal fun ChatExportChooserDialog(
             title = "JSON",
             subtitle = "保存为 .json 文件",
             iconBox = MaterialTheme.colorScheme.secondary,
-            onClick = onExportJson
+            onClick = onExportJson,
         )
         Spacer(modifier = Modifier.height(2.dp))
         PixelModeRow(
@@ -506,7 +524,7 @@ internal fun ChatExportChooserDialog(
             title = "纯文本分享",
             subtitle = "生成网页分享",
             iconBox = MaterialTheme.colorScheme.tertiary,
-            onClick = onSharePlainText
+            onClick = onSharePlainText,
         )
     }
 }

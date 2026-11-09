@@ -14,7 +14,11 @@ import org.junit.Test
  * 本地跑法（connected 任务不支持 --tests 过滤，用 -P 参数）：
  * ./gradlew :app:connectedDebugAndroidTest \
  *   -Pandroid.testInstrumentationRunnerArguments.class=dev.liuyouwu.familiar.data.local.Migration17_18Test
+ *
+ * 测试类名含迁移对「17_18」语义，ktlint class-naming 不允许下划线——@Suppress("ClassName") 豁免
+ * （同为迁移测试的 Migration16_17Test 为存量债务，待 ktlint 存量清零批次一并处理）
  */
+@Suppress("ClassName")
 class Migration17_18Test {
     private val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), AppDatabase::class.java)
     private val db = "test-db-messages-conv-ts-index"
@@ -25,15 +29,15 @@ class Migration17_18Test {
             // 造数：外键父行（conversations）+ 两条消息（含结构列，供数据保持断言）
             execSQL(
                 "INSERT INTO conversations (id, title, systemPrompt, createdAt, updatedAt, isChatRoom, isPinned) " +
-                    "VALUES (1, '迁移测试', '', 100, 100, 0, 0)"
+                    "VALUES (1, '迁移测试', '', 100, 100, 0, 0)",
             )
             execSQL(
                 "INSERT INTO messages (conversationId, role, content, timestamp) " +
-                    "VALUES (1, 'user', '旧消息A', 1000)"
+                    "VALUES (1, 'user', '旧消息A', 1000)",
             )
             execSQL(
                 "INSERT INTO messages (conversationId, role, content, timestamp, blocks, turnId) " +
-                    "VALUES (1, 'assistant', '旧消息B', 1001, '[{\"type\":\"text\",\"text\":\"hi\"}]', '1:u1')"
+                    "VALUES (1, 'assistant', '旧消息B', 1001, '[{\"type\":\"text\",\"text\":\"hi\"}]', '1:u1')",
             )
             close()
         }
@@ -43,7 +47,7 @@ class Migration17_18Test {
             // 校验已兜底身份，这里显式断言防「同名不同列」的边角）
             query(
                 "SELECT name FROM sqlite_master WHERE type='index' " +
-                    "AND name='index_messages_conversationId_timestamp'"
+                    "AND name='index_messages_conversationId_timestamp'",
             ).use { c ->
                 assertTrue("复合索引 index_messages_conversationId_timestamp 未创建", c.moveToFirst())
             }

@@ -30,37 +30,41 @@ import java.nio.file.Files
  * 单例，开关必须在每次写盘时求值（不得构造期定型），用例③钉死该不变式。
  */
 class DiagDumpGateTest {
-
     /** 载荷超 256K 字符：Gson 序列化后的请求体必超 MAX_DUMP_CHARS=256*1024 */
     private val bigPayload = "x".repeat(300 * 1024)
 
-    private fun client(dumpDir: () -> File?): DefaultLlmClient = DefaultLlmClient(
-        Deps(
-            okHttp = OkHttpClient(),
-            sseSource = { _ -> listOf(SseRawEvent("hi", null, null, null, "stop")).asFlow() },
-            baseUrl = { "" },
-            apiKey = { "" },
-            provider = { "" },
-            dumpDir = dumpDir,
-        ),
-        WireConverter(),
-        MarkerToolAdapter(),
-    )
+    private fun client(dumpDir: () -> File?): DefaultLlmClient =
+        DefaultLlmClient(
+            Deps(
+                okHttp = OkHttpClient(),
+                sseSource = { _ -> listOf(SseRawEvent("hi", null, null, null, "stop")).asFlow() },
+                baseUrl = { "" },
+                apiKey = { "" },
+                provider = { "" },
+                dumpDir = dumpDir,
+            ),
+            WireConverter(),
+            MarkerToolAdapter(),
+        )
 
-    private fun request(text: String): LlmRequest = LlmRequest(
-        model = "test-model",
-        system = "你是测试助手。",
-        history = listOf(AgentMessage("u1", Role.USER, listOf(ContentBlock.Text(text)))),
-        tools = emptyList(),
-        mode = ToolMode.NATIVE,
-        temperature = null,
-        maxTokens = null,
-        searchAllowed = false,
-        budgetLeft = { true },
-    )
+    private fun request(text: String): LlmRequest =
+        LlmRequest(
+            model = "test-model",
+            system = "你是测试助手。",
+            history = listOf(AgentMessage("u1", Role.USER, listOf(ContentBlock.Text(text)))),
+            tools = emptyList(),
+            mode = ToolMode.NATIVE,
+            temperature = null,
+            maxTokens = null,
+            searchAllowed = false,
+            budgetLeft = { true },
+        )
 
     /** 发一次请求并收集完毕（驱动 buildHttpRequest → dumpRequestJson 全路径） */
-    private fun runOnce(client: DefaultLlmClient, text: String) {
+    private fun runOnce(
+        client: DefaultLlmClient,
+        text: String,
+    ) {
         runBlocking { client.stream(request(text)).toList() }
     }
 

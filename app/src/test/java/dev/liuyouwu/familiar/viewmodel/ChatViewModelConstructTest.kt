@@ -11,8 +11,8 @@ import dev.liuyouwu.familiar.data.local.dao.ConversationDao
 import dev.liuyouwu.familiar.data.local.dao.ConversationMessageCount
 import dev.liuyouwu.familiar.data.local.dao.LastMessageRow
 import dev.liuyouwu.familiar.data.local.dao.LearningProfileDao
-import dev.liuyouwu.familiar.data.local.dao.MessageDao
 import dev.liuyouwu.familiar.data.local.dao.MessageAttachmentRow
+import dev.liuyouwu.familiar.data.local.dao.MessageDao
 import dev.liuyouwu.familiar.data.local.dao.MessageExportRow
 import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
 import dev.liuyouwu.familiar.data.local.dao.MessageSearchRow
@@ -30,11 +30,11 @@ import dev.liuyouwu.familiar.data.repository.ChatRepository
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
 import dev.liuyouwu.familiar.ui.model.UiMessage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -67,10 +67,8 @@ private fun unreachable(): Nothing = throw UnsupportedOperationException("测试
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelConstructTest {
-
     @get:Rule
     val temp = TemporaryFolder()
-
 
     @Before
     fun setUp() {
@@ -87,53 +85,60 @@ class ChatViewModelConstructTest {
     // ---------------- ChatViewModel：fake 依赖构造 + getUiMessages 映射断言 ----------------
 
     @Test
-    fun `chat view model constructs from injected fakes and maps ui messages`() = runBlocking {
-        val msgDao = FakeMessageDao(
-            lightRows = listOf(
-                MessageLightRow(id = 1, conversationId = 42, role = "user", content = "你好", timestamp = 1),
-                MessageLightRow(id = 2, conversationId = 42, role = "assistant", content = "在的", timestamp = 2),
-            ),
-        )
-        val db = FakeAppDatabase(FakeConversationDao(), msgDao)
-        val vm = ChatViewModel(
-            application = Application(),
-            db = db,
-            chatRepository = ChatRepository(db.conversationDao(), msgDao, FakePromptTemplateDao, db),
-            settingsRepository = fakeSettings(),
-            modelsApi = ModelsApi(),
-            transcriber = Transcriber(),
-        )
+    fun `chat view model constructs from injected fakes and maps ui messages`() =
+        runBlocking {
+            val msgDao =
+                FakeMessageDao(
+                    lightRows =
+                        listOf(
+                            MessageLightRow(id = 1, conversationId = 42, role = "user", content = "你好", timestamp = 1),
+                            MessageLightRow(id = 2, conversationId = 42, role = "assistant", content = "在的", timestamp = 2),
+                        ),
+                )
+            val db = FakeAppDatabase(FakeConversationDao(), msgDao)
+            val vm =
+                ChatViewModel(
+                    application = Application(),
+                    db = db,
+                    chatRepository = ChatRepository(db.conversationDao(), msgDao, FakePromptTemplateDao, db),
+                    settingsRepository = fakeSettings(),
+                    modelsApi = ModelsApi(),
+                    transcriber = Transcriber(),
+                )
 
-        val ui: List<UiMessage> = vm.getUiMessages(42L).first()
+            val ui: List<UiMessage> = vm.getUiMessages(42L).first()
 
-        assertEquals(listOf("1", "2"), ui.map { it.id })
-        assertEquals(listOf("你好"), ui[0].textBlocks)
-        assertEquals(listOf("在的"), ui[1].textBlocks)
-        assertFalse(ui[0].hasLazyAttachment)
-    }
+            assertEquals(listOf("1", "2"), ui.map { it.id })
+            assertEquals(listOf("你好"), ui[0].textBlocks)
+            assertEquals(listOf("在的"), ui[1].textBlocks)
+            assertFalse(ui[0].hasLazyAttachment)
+        }
 
     // ---------------- ChatListViewModel：同款 fake 构造断言 ----------------
 
     @Test
-    fun `chat list view model constructs from injected fakes and projects conversations`() = runBlocking {
-        val convDao = FakeConversationDao(
-            conversations = listOf(ConversationEntity(id = 7, title = "测试会话")),
-        )
-        val db = FakeAppDatabase(convDao, FakeMessageDao())
-        val vm = ChatListViewModel(
-            application = Application(),
-            db = db,
-            chatRepository = ChatRepository(convDao, db.messageDao(), FakePromptTemplateDao, db),
-            settingsRepository = fakeSettings(),
-            modelsApi = ModelsApi(),
-        )
+    fun `chat list view model constructs from injected fakes and projects conversations`() =
+        runBlocking {
+            val convDao =
+                FakeConversationDao(
+                    conversations = listOf(ConversationEntity(id = 7, title = "测试会话")),
+                )
+            val db = FakeAppDatabase(convDao, FakeMessageDao())
+            val vm =
+                ChatListViewModel(
+                    application = Application(),
+                    db = db,
+                    chatRepository = ChatRepository(convDao, db.messageDao(), FakePromptTemplateDao, db),
+                    settingsRepository = fakeSettings(),
+                    modelsApi = ModelsApi(),
+                )
 
-        // WhileSubscribed 首值是空表占位：等上游 Ui 投影首次送达再断言
-        val conversations = vm.allConversations.first { it.isNotEmpty() }
+            // WhileSubscribed 首值是空表占位：等上游 Ui 投影首次送达再断言
+            val conversations = vm.allConversations.first { it.isNotEmpty() }
 
-        assertEquals(listOf(7L), conversations.map { it.id })
-        assertEquals("测试会话", conversations.single().title)
-    }
+            assertEquals(listOf(7L), conversations.map { it.id })
+            assertEquals("测试会话", conversations.single().title)
+        }
 
     // ---------------- 夹具 ----------------
 
@@ -144,21 +149,26 @@ class ChatViewModelConstructTest {
         private val messageDao: MessageDao,
     ) : AppDatabase() {
         override fun conversationDao(): ConversationDao = conversationDao
+
         override fun messageDao(): MessageDao = messageDao
+
         override fun promptTemplateDao(): PromptTemplateDao = FakePromptTemplateDao
+
         override fun chatRoomParticipantDao(): ChatRoomParticipantDao = ThrowingParticipantDao
+
         override fun personaPresetDao(): PersonaPresetDao = FakePersonaPresetDao
+
         override fun learningProfileDao(): LearningProfileDao = ThrowingLearningProfileDao
+
         // Room 2.7 起 createInvalidationTracker/createOpenHelper 与 InvalidationTracker(database, tables)
         // 构造器标记弃用（generated impl 不再调用），但基类仍 abstract，假件必须 override——
         // 按编译器指引随基类标注 @Deprecated；构造器换非弃用 4 参形（空 map，与 2 参形委托等价）
         @Deprecated("generated impl no longer calls this; kept to satisfy abstract base")
-        override fun createInvalidationTracker(): InvalidationTracker =
-            InvalidationTracker(this, emptyMap(), emptyMap(), "messages")
+        override fun createInvalidationTracker(): InvalidationTracker = InvalidationTracker(this, emptyMap(), emptyMap(), "messages")
 
         @Deprecated("generated impl no longer calls this; kept to satisfy abstract base")
-        override fun createOpenHelper(config: DatabaseConfiguration) =
-            throw UnsupportedOperationException("Room 管道真机验证")
+        override fun createOpenHelper(config: DatabaseConfiguration) = throw UnsupportedOperationException("Room 管道真机验证")
+
         override fun clearAllTables() = throw UnsupportedOperationException("Room 管道真机验证")
     }
 
@@ -166,6 +176,7 @@ class ChatViewModelConstructTest {
      *  preferencesDataStore 委托只触达这两点，DataStore 文件落到真实临时目录（纯 JVM）。 */
     private class DataStoreContext(private val filesDir: File) : ContextWrapper(null) {
         override fun getApplicationContext(): Context = this
+
         override fun getFilesDir(): File = filesDir
     }
 
@@ -175,46 +186,83 @@ class ChatViewModelConstructTest {
     /** 构造期触达两处（ChatListViewModel.templates 流 / 种子模板迁移），供给空表 + no-op */
     private object FakePromptTemplateDao : PromptTemplateDao {
         override fun getAllTemplates(): Flow<List<PromptTemplateEntity>> = flowOf(emptyList())
+
         override suspend fun getAllTemplatesSync(): List<PromptTemplateEntity> = unreachable()
+
         override suspend fun deleteAllTemplates() = unreachable()
+
         override suspend fun insertTemplate(template: PromptTemplateEntity): Long = unreachable()
+
         override suspend fun deleteTemplate(template: PromptTemplateEntity) = unreachable()
+
         // 种子模板改名迁移（init IO 协程）会触达：no-op 即可（真库该行无副本）
-        override suspend fun renameByName(oldName: String, newName: String) = Unit
+        override suspend fun renameByName(
+            oldName: String,
+            newName: String,
+        ) = Unit
+
         override suspend fun getTemplateById(id: Long): PromptTemplateEntity? = unreachable()
-        override suspend fun updateTemplate(id: Long, name: String, content: String) = unreachable()
+
+        override suspend fun updateTemplate(
+            id: Long,
+            name: String,
+            content: String,
+        ) = unreachable()
     }
 
     /** 构造期触达一处（ChatViewModel.personaPresets 流），供给空表 */
     private object FakePersonaPresetDao : PersonaPresetDao {
         override fun getAllPresets(): Flow<List<PersonaPresetEntity>> = flowOf(emptyList())
+
         override suspend fun getAllPresetsSync(): List<PersonaPresetEntity> = unreachable()
+
         override suspend fun getById(id: Long): PersonaPresetEntity? = unreachable()
+
         override suspend fun deleteAllPresets() = unreachable()
+
         override suspend fun insert(preset: PersonaPresetEntity): Long = unreachable()
+
         override suspend fun delete(preset: PersonaPresetEntity) = unreachable()
+
         override suspend fun deleteById(id: Long) = unreachable()
     }
 
     private object ThrowingParticipantDao : ChatRoomParticipantDao {
         override fun getParticipantsForConversation(conversationId: Long): Flow<List<ChatRoomParticipantEntity>> = unreachable()
+
         override suspend fun getParticipantsForConversationSync(conversationId: Long): List<ChatRoomParticipantEntity> = unreachable()
+
         override suspend fun getAllParticipantsSync(): List<ChatRoomParticipantEntity> = unreachable()
+
         override suspend fun insertParticipant(participant: ChatRoomParticipantEntity): Long = unreachable()
+
         override suspend fun insertParticipants(participants: List<ChatRoomParticipantEntity>) = unreachable()
+
         override suspend fun deleteParticipant(participant: ChatRoomParticipantEntity) = unreachable()
+
         override suspend fun deleteParticipantsForConversation(conversationId: Long) = unreachable()
     }
 
     private object ThrowingLearningProfileDao : LearningProfileDao {
         override fun observeAll(): Flow<List<LearningProfileEntryEntity>> = unreachable()
+
         override suspend fun allActive(): List<LearningProfileEntryEntity> = unreachable()
+
         override suspend fun due(now: Long): List<LearningProfileEntryEntity> = unreachable()
+
         override suspend fun byId(id: Long): LearningProfileEntryEntity? = unreachable()
+
         override suspend fun insert(e: LearningProfileEntryEntity): Long = unreachable()
+
         override suspend fun update(e: LearningProfileEntryEntity) = unreachable()
-        override suspend fun markReminded(id: Long, at: Long) = unreachable()
+
+        override suspend fun markReminded(
+            id: Long,
+            at: Long,
+        ) = unreachable()
+
         override suspend fun archive(id: Long) = unreachable()
+
         override fun hasActive(): Flow<Boolean> = unreachable()
     }
 
@@ -222,20 +270,61 @@ class ChatViewModelConstructTest {
         private val conversations: List<ConversationEntity> = emptyList(),
     ) : ConversationDao {
         override fun getAllConversations(): Flow<List<ConversationEntity>> = flowOf(conversations)
-        override suspend fun searchByTitle(escaped: String, limit: Int): List<ConversationEntity> = unreachable()
+
+        override suspend fun searchByTitle(
+            escaped: String,
+            limit: Int,
+        ): List<ConversationEntity> = unreachable()
+
         override suspend fun getConversationById(id: Long): ConversationEntity? = unreachable()
+
         override fun observeConversation(id: Long): Flow<ConversationEntity?> = flowOf(null)
+
         override suspend fun insertConversation(conversation: ConversationEntity): Long = unreachable()
-        override suspend fun updateTitle(id: Long, title: String, updatedAt: Long) = unreachable()
-        override suspend fun touch(id: Long, updatedAt: Long) = unreachable()
-        override suspend fun updateTutorStateRaw(id: Long, state: String) = unreachable()
-        override suspend fun updateTutorConfig(id: Long, cfg: String) = unreachable()
-        override suspend fun updateSystemPrompt(id: Long, prompt: String) = unreachable()
-        override suspend fun updateSkillParams(id: Long, json: String) = unreachable()
+
+        override suspend fun updateTitle(
+            id: Long,
+            title: String,
+            updatedAt: Long,
+        ) = unreachable()
+
+        override suspend fun touch(
+            id: Long,
+            updatedAt: Long,
+        ) = unreachable()
+
+        override suspend fun updateTutorStateRaw(
+            id: Long,
+            state: String,
+        ) = unreachable()
+
+        override suspend fun updateTutorConfig(
+            id: Long,
+            cfg: String,
+        ) = unreachable()
+
+        override suspend fun updateSystemPrompt(
+            id: Long,
+            prompt: String,
+        ) = unreachable()
+
+        override suspend fun updateSkillParams(
+            id: Long,
+            json: String,
+        ) = unreachable()
+
         override suspend fun deleteConversation(conversation: ConversationEntity) = unreachable()
+
         override suspend fun deleteById(id: Long) = unreachable()
-        override suspend fun updatePinned(id: Long, pinned: Boolean, pinnedAt: Long?) = unreachable()
+
+        override suspend fun updatePinned(
+            id: Long,
+            pinned: Boolean,
+            pinnedAt: Long?,
+        ) = unreachable()
+
         override suspend fun getAllConversationsOnce(): List<ConversationEntity> = unreachable()
+
         override suspend fun deleteAllConversations() = unreachable()
     }
 
@@ -243,35 +332,97 @@ class ChatViewModelConstructTest {
         private val lightRows: List<MessageLightRow> = emptyList(),
     ) : MessageDao {
         override fun getMessagesForConversation(conversationId: Long): Flow<List<MessageEntity>> = unreachable()
+
         override suspend fun countRoundtableAnchors(conversationId: Long): Int = unreachable()
+
         override suspend fun insertMessage(message: MessageEntity): Long = unreachable()
+
         override suspend fun getMessageById(id: Long): MessageEntity? = unreachable()
+
         override suspend fun deleteMessagesForConversation(conversationId: Long) = unreachable()
-        override suspend fun updateContent(id: Long, content: String) = unreachable()
-        override suspend fun updateContentAndUsage(
-            id: Long, content: String, promptTokens: Int?, completionTokens: Int?, cachedTokens: Int?
+
+        override suspend fun updateContent(
+            id: Long,
+            content: String,
         ) = unreachable()
+
+        override suspend fun updateContentAndUsage(
+            id: Long,
+            content: String,
+            promptTokens: Int?,
+            completionTokens: Int?,
+            cachedTokens: Int?,
+        ) = unreachable()
+
         override suspend fun deleteById(id: Long) = unreachable()
-        override suspend fun updateSegments(id: Long, segments: String?) = unreachable()
-        override suspend fun deleteMessagesAfter(conversationId: Long, afterMessageId: Long) = unreachable()
+
+        override suspend fun updateSegments(
+            id: Long,
+            segments: String?,
+        ) = unreachable()
+
+        override suspend fun deleteMessagesAfter(
+            conversationId: Long,
+            afterMessageId: Long,
+        ) = unreachable()
+
         override suspend fun deleteEmptyAssistantPlaceholders(conversationId: Long) = unreachable()
-        override fun getMessagesLight(conversationId: Long, limit: Int): Flow<List<MessageLightRow>> =
-            flowOf(lightRows.filter { it.conversationId == conversationId })
-        override suspend fun getMessagesBefore(conversationId: Long, beforeId: Long, limit: Int): List<MessageLightRow> = unreachable()
+
+        override fun getMessagesLight(
+            conversationId: Long,
+            limit: Int,
+        ): Flow<List<MessageLightRow>> = flowOf(lightRows.filter { it.conversationId == conversationId })
+
+        override suspend fun getMessagesBefore(
+            conversationId: Long,
+            beforeId: Long,
+            limit: Int,
+        ): List<MessageLightRow> = unreachable()
+
         override suspend fun getAttachment(id: Long): MessageAttachmentRow? = unreachable()
-        override suspend fun getAttachmentsForTurn(conversationId: Long, turnId: String): List<MessageAttachmentRow> = unreachable()
+
+        override suspend fun getAttachmentsForTurn(
+            conversationId: Long,
+            turnId: String,
+        ): List<MessageAttachmentRow> = unreachable()
+
         override suspend fun searchMessages(query: String): List<MessageSearchRow> = unreachable()
-        override suspend fun updateUsage(id: Long, promptTokens: Int?, completionTokens: Int?, cachedTokens: Int?) = unreachable()
+
+        override suspend fun updateUsage(
+            id: Long,
+            promptTokens: Int?,
+            completionTokens: Int?,
+            cachedTokens: Int?,
+        ) = unreachable()
+
         override suspend fun getMessageCount(conversationId: Long): Int = unreachable()
+
         override fun getLastMessagePerConversation(): Flow<List<LastMessageRow>> = flowOf(emptyList())
+
         override fun getMessageCounts(): Flow<List<ConversationMessageCount>> = flowOf(emptyList())
+
         override suspend fun getAllMessagesOnce(): List<MessageEntity> = unreachable()
+
         override suspend fun getMessagesForConversationOnce(conversationId: Long): List<MessageEntity> = unreachable()
+
         override suspend fun deleteAllMessages() = unreachable()
+
         override suspend fun getMessagesForExport(conversationId: Long): List<MessageExportRow> = unreachable()
-        override suspend fun deleteByTurnId(conversationId: Long, turnId: String): Int = unreachable()
+
+        override suspend fun deleteByTurnId(
+            conversationId: Long,
+            turnId: String,
+        ): Int = unreachable()
+
         override suspend fun getLastAssistantTurnId(conversationId: Long): String? = unreachable()
-        override suspend fun updateBlocks(id: Long, content: String, reasoning: String?, blocks: String) = unreachable()
+
+        override suspend fun updateBlocks(
+            id: Long,
+            content: String,
+            reasoning: String?,
+            blocks: String,
+        ) = unreachable()
+
         override suspend fun getMaxMessageId(conversationId: Long): Long? = unreachable()
     }
 }

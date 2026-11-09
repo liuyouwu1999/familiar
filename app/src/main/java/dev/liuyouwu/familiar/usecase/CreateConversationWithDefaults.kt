@@ -31,14 +31,16 @@ class CreateConversationWithDefaults(
             return remembered
         }
         // 人设随皮肤（personaOf 四分支；cardId 参数保留兼容旧调用，恒写 0）
-        val preset = DefaultPersonaCards.personaOf(
-            dev.liuyouwu.familiar.pet.PetSkinStore.get(settings.getPetColor())
-        )
-        val id = repo.createConversationWithSkill(
-            title = preset.name,
-            skillId = TypeInferer.FAMILIAR,
-            skillParams = mapOf("cardId" to cardId.toString())
-        )
+        val preset =
+            DefaultPersonaCards.personaOf(
+                dev.liuyouwu.familiar.pet.PetSkinStore.get(settings.getPetColor()),
+            )
+        val id =
+            repo.createConversationWithSkill(
+                title = preset.name,
+                skillId = TypeInferer.FAMILIAR,
+                skillParams = mapOf("cardId" to cardId.toString()),
+            )
         settings.setFamiliarConversationId(id)
         settings.setFamiliarAddress(preset.address)
         settings.setFamiliarSelfName(preset.selfName)
@@ -46,9 +48,10 @@ class CreateConversationWithDefaults(
     }
 
     /** 创建「讲人话」解释模式会话（原 launchEli5Creation 函数体随迁）：零参数 skill。 */
-    suspend fun createEli5(): Long = repo.createConversationWithSkill(
-        title = "讲人话问答",
-        skillId = TypeInferer.ELI5,
-        skillParams = emptyMap()
-    )
+    suspend fun createEli5(): Long =
+        repo.createConversationWithSkill(
+            title = "讲人话问答",
+            skillId = TypeInferer.ELI5,
+            skillParams = emptyMap(),
+        )
 }

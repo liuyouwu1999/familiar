@@ -51,12 +51,14 @@ internal fun rememberChatExportActions(
         }
     }
 
-    val exportMarkdownLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/markdown")
-    ) { uri -> writeExportPayload(uri) }
-    val exportJsonLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri -> writeExportPayload(uri) }
+    val exportMarkdownLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("text/markdown"),
+        ) { uri -> writeExportPayload(uri) }
+    val exportJsonLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/json"),
+        ) { uri -> writeExportPayload(uri) }
 
     fun startStructuredExport(format: String) {
         coroutineScope.launch {
@@ -67,8 +69,11 @@ internal fun rememberChatExportActions(
             }
             val (payload, safeTitle) = result
             pendingExportPayload = payload
-            if (format == "json") exportJsonLauncher.launch("$safeTitle.json")
-            else exportMarkdownLauncher.launch("$safeTitle.md")
+            if (format == "json") {
+                exportJsonLauncher.launch("$safeTitle.json")
+            } else {
+                exportMarkdownLauncher.launch("$safeTitle.md")
+            }
         }
     }
 

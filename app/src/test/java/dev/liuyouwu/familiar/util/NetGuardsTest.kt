@@ -9,11 +9,11 @@ import dev.liuyouwu.familiar.core.llm.model.AgentMessage
 import dev.liuyouwu.familiar.core.llm.model.ContentBlock
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.core.llm.model.StreamEvent
+import dev.liuyouwu.familiar.core.llm.wire.MessageDto
 import dev.liuyouwu.familiar.core.llm.wire.ToolMode
 import dev.liuyouwu.familiar.core.llm.wire.WireConverter
 import dev.liuyouwu.familiar.data.remote.api.ConnectionProbe
 import dev.liuyouwu.familiar.data.remote.api.Transcriber
-import dev.liuyouwu.familiar.core.llm.wire.MessageDto
 import dev.liuyouwu.familiar.tools.mcp.McpClient
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.toList
@@ -37,18 +37,23 @@ import java.nio.file.Files
  *    不发网络）。私网 http 与 https+key 两阴性对照不拒发。
  */
 class NetGuardsTest {
-
     // ===== a) 判定矩阵（brief Step 1 字面） =====
 
     @Test
     fun `判定矩阵-回环RFC1918与IPv6本地段判安全`() {
         listOf(
-            "127.0.0.1",      // IPv4 回环
-            "10.0.0.5",       // RFC1918 10/8
-            "192.168.1.20",   // RFC1918 192.168/16
-            "172.16.0.1",     // RFC1918 172.16/12 段首
-            "::1",            // IPv6 回环
-            "fe80::1",        // IPv6 链路本地
+            // IPv4 回环
+            "127.0.0.1",
+            // RFC1918 10/8
+            "10.0.0.5",
+            // RFC1918 192.168/16
+            "192.168.1.20",
+            // RFC1918 172.16/12 段首
+            "172.16.0.1",
+            // IPv6 回环
+            "::1",
+            // IPv6 链路本地
+            "fe80::1",
         ).forEach { host ->
             assertTrue("$host 应判定为明文安全", NetGuards.isPlaintextSafeHost(host))
         }
@@ -57,9 +62,12 @@ class NetGuardsTest {
     @Test
     fun `判定矩阵-公网域名与越界段判不安全`() {
         listOf(
-            "8.8.8.8",        // 公网 IP
-            "example.com",    // 域名（非 IP 一律不安全，禁止 DNS 解析）
-            "172.32.0.1",     // 172.16/12 越界段（172.32 不在 16..31）
+            // 公网 IP
+            "8.8.8.8",
+            // 域名（非 IP 一律不安全，禁止 DNS 解析）
+            "example.com",
+            // 172.16/12 越界段（172.32 不在 16..31）
+            "172.32.0.1",
         ).forEach { host ->
             assertFalse("$host 应判定为明文不安全", NetGuards.isPlaintextSafeHost(host))
         }
@@ -99,32 +107,34 @@ class NetGuardsTest {
         baseUrl: () -> String,
         apiKey: () -> String,
         opened: () -> Unit = {},
-    ): DefaultLlmClient = DefaultLlmClient(
-        Deps(
-            okHttp = OkHttpClient(),
-            sseSource = { _ ->
-                opened()
-                listOf(SseRawEvent("hi", null, null, null, "stop")).asFlow()
-            },
-            baseUrl = baseUrl,
-            apiKey = apiKey,
-            provider = { "" },
-        ),
-        WireConverter(),
-        MarkerToolAdapter(),
-    )
+    ): DefaultLlmClient =
+        DefaultLlmClient(
+            Deps(
+                okHttp = OkHttpClient(),
+                sseSource = { _ ->
+                    opened()
+                    listOf(SseRawEvent("hi", null, null, null, "stop")).asFlow()
+                },
+                baseUrl = baseUrl,
+                apiKey = apiKey,
+                provider = { "" },
+            ),
+            WireConverter(),
+            MarkerToolAdapter(),
+        )
 
-    private fun request(): LlmRequest = LlmRequest(
-        model = "test-model",
-        system = "你是测试助手。",
-        history = listOf(AgentMessage("u1", Role.USER, listOf(ContentBlock.Text("问题")))),
-        tools = emptyList(),
-        mode = ToolMode.NATIVE,
-        temperature = null,
-        maxTokens = null,
-        searchAllowed = false,
-        budgetLeft = { true },
-    )
+    private fun request(): LlmRequest =
+        LlmRequest(
+            model = "test-model",
+            system = "你是测试助手。",
+            history = listOf(AgentMessage("u1", Role.USER, listOf(ContentBlock.Text("问题")))),
+            tools = emptyList(),
+            mode = ToolMode.NATIVE,
+            temperature = null,
+            maxTokens = null,
+            searchAllowed = false,
+            budgetLeft = { true },
+        )
 
     @Test
     fun `拒发路径-http公网加非空key请求组装抛PlaintextKeyRefusal`() {
@@ -135,7 +145,7 @@ class NetGuardsTest {
         assertNotNull("必须以 StreamEvent.Error 拒发", err)
         assertTrue(
             "错误必须是 PlaintextKeyRefusal，实际 ${err?.error?.javaClass}",
-            err?.error is PlaintextKeyRefusal
+            err?.error is PlaintextKeyRefusal,
         )
         assertEquals("http 且非局域网目标，已拒绝携带 API Key 发起请求", err?.error?.message)
         assertFalse("拒发请求不得出缝（假 SseSource 不得被打开）", opened)
@@ -240,9 +250,10 @@ class NetGuardsTest {
     fun `拒发路径-Transcriber带key发http公网返回拒发失败`() {
         val tmp = Files.createTempFile("voice", ".mp4").toFile()
         try {
-            val result = runBlocking {
-                Transcriber().transcribeAudio("http://8.8.8.8:8080", tmp, "sk-x")
-            }
+            val result =
+                runBlocking {
+                    Transcriber().transcribeAudio("http://8.8.8.8:8080", tmp, "sk-x")
+                }
             assertTrue("必须以 Result.failure 拒发", result.isFailure)
             val e = result.exceptionOrNull()
             assertTrue("失败因必须是 PlaintextKeyRefusal，实际 $e", e is PlaintextKeyRefusal)

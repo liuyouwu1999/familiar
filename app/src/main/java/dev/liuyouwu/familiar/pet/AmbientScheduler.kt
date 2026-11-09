@@ -20,7 +20,10 @@ interface ReviewReminderPort : ReviewDueSource {
     suspend fun dueTop(): ReviewDueEntry?
 
     /** 记催（LearningProfileDao.markReminded 转发） */
-    suspend fun markReminded(id: Long, at: Long)
+    suspend fun markReminded(
+        id: Long,
+        at: Long,
+    )
 }
 
 /** 复习拍条目标量（A4：调度/台词只需要 id 与 topic） */
@@ -50,7 +53,6 @@ class AmbientScheduler(
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val random: Random = Random.Default,
 ) {
-
     /** 距上次任意气泡显示（防烦判二；render 显示气泡时经 onBubbleShown 打点） */
     var lastBubbleShownAt = 0L
         private set
@@ -69,8 +71,7 @@ class AmbientScheduler(
     fun inBubbleQuietWindow(): Boolean = nowMs() - lastBubbleShownAt < 60_000L
 
     /** 闲聊判定：空闲门全开 + 判二过窗 */
-    fun shouldAmbient(gates: AmbientGates): Boolean =
-        gates.allOpen && !inBubbleQuietWindow()
+    fun shouldAmbient(gates: AmbientGates): Boolean = gates.allOpen && !inBubbleQuietWindow()
 
     /** 复习拍判定：开关 + 有未归档条目 + 空闲门 + 到期数>0。
      *  短路与原实现同序：门不开不查到期源（DAO 查询是最后一道） */

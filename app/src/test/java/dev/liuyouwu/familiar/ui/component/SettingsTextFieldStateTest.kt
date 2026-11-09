@@ -12,7 +12,6 @@ import org.junit.Test
  * 体即 [SettingsTextFieldState.followIfClean]，在此验证现场三处语义）。
  */
 class SettingsTextFieldStateTest {
-
     @Test
     fun `初始未填未脏`() {
         val state = SettingsTextFieldState()

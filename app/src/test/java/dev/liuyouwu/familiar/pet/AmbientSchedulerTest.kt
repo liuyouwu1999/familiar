@@ -13,26 +13,29 @@ import kotlin.random.Random
  * 时钟/随机注入可控（JVM 无 Android 依赖）。
  */
 class AmbientSchedulerTest {
-
     /** 可控时钟：t 手动推进 */
     private var t = 0L
 
     /** 到期源 fake：计数 + 调用观测（验证门关时短路不查库） */
     private class FakeDueSource(var count: Int = 0) : ReviewDueSource {
         var calls = 0
+
         override suspend fun dueCount(): Int {
             calls++
             return count
         }
     }
 
-    private fun scheduler(due: FakeDueSource = FakeDueSource()): AmbientScheduler =
-        AmbientScheduler(reviewDue = due, nowMs = { t })
+    private fun scheduler(due: FakeDueSource = FakeDueSource()): AmbientScheduler = AmbientScheduler(reviewDue = due, nowMs = { t })
 
     /** 全开的空闲门：挂窗+已连接+空闲+无泡 */
-    private val openGates = AmbientGates(
-        visible = true, connected = true, idle = true, bubbleShowing = false,
-    )
+    private val openGates =
+        AmbientGates(
+            visible = true,
+            connected = true,
+            idle = true,
+            bubbleShowing = false,
+        )
 
     // —— 时钟注入可控 ——
 
@@ -90,42 +93,47 @@ class AmbientSchedulerTest {
     // —— 复习拍判定（spec §6）——
 
     @Test
-    fun `复习到期 dueCount大于0 且窗口开 shouldNudgeReview 为true`() = runTest {
-        val due = FakeDueSource(count = 1)
-        val s = scheduler(due)
-        t = 500_000L
-        assertTrue(s.shouldNudgeReview(reminderOn = true, hasEntries = true, gates = openGates))
-        assertEquals(1, due.calls)
-    }
+    fun `复习到期 dueCount大于0 且窗口开 shouldNudgeReview 为true`() =
+        runTest {
+            val due = FakeDueSource(count = 1)
+            val s = scheduler(due)
+            t = 500_000L
+            assertTrue(s.shouldNudgeReview(reminderOn = true, hasEntries = true, gates = openGates))
+            assertEquals(1, due.calls)
+        }
 
     @Test
-    fun `无到期 dueCount为0 shouldNudgeReview 为false`() = runTest {
-        val s = scheduler(FakeDueSource(count = 0))
-        assertFalse(s.shouldNudgeReview(reminderOn = true, hasEntries = true, gates = openGates))
-    }
+    fun `无到期 dueCount为0 shouldNudgeReview 为false`() =
+        runTest {
+            val s = scheduler(FakeDueSource(count = 0))
+            assertFalse(s.shouldNudgeReview(reminderOn = true, hasEntries = true, gates = openGates))
+        }
 
     @Test
-    fun `复习开关关 有到期也不催`() = runTest {
-        val due = FakeDueSource(count = 2)
-        val s = scheduler(due)
-        assertFalse(s.shouldNudgeReview(reminderOn = false, hasEntries = true, gates = openGates))
-        assertEquals("门关应短路，不查到期源", 0, due.calls)
-    }
+    fun `复习开关关 有到期也不催`() =
+        runTest {
+            val due = FakeDueSource(count = 2)
+            val s = scheduler(due)
+            assertFalse(s.shouldNudgeReview(reminderOn = false, hasEntries = true, gates = openGates))
+            assertEquals("门关应短路，不查到期源", 0, due.calls)
+        }
 
     @Test
-    fun `无未归档条目 不催`() = runTest {
-        val s = scheduler(FakeDueSource(count = 2))
-        assertFalse(s.shouldNudgeReview(reminderOn = true, hasEntries = false, gates = openGates))
-    }
+    fun `无未归档条目 不催`() =
+        runTest {
+            val s = scheduler(FakeDueSource(count = 2))
+            assertFalse(s.shouldNudgeReview(reminderOn = true, hasEntries = false, gates = openGates))
+        }
 
     @Test
-    fun `复习拍同样受空闲门约束`() = runTest {
-        val due = FakeDueSource(count = 2)
-        val s = scheduler(due)
-        assertFalse(s.shouldNudgeReview(true, true, openGates.copy(visible = false)))
-        assertFalse(s.shouldNudgeReview(true, true, openGates.copy(bubbleShowing = true)))
-        assertFalse(s.shouldNudgeReview(true, true, openGates.copy(idle = false)))
-    }
+    fun `复习拍同样受空闲门约束`() =
+        runTest {
+            val due = FakeDueSource(count = 2)
+            val s = scheduler(due)
+            assertFalse(s.shouldNudgeReview(true, true, openGates.copy(visible = false)))
+            assertFalse(s.shouldNudgeReview(true, true, openGates.copy(bubbleShowing = true)))
+            assertFalse(s.shouldNudgeReview(true, true, openGates.copy(idle = false)))
+        }
 
     // —— 判一：DONE 收束 45s 复位窗口（会话刚收束的下一拍不开口）——
 

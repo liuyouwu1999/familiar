@@ -20,6 +20,9 @@ fun appScope(
     // logger 注入缝：JVM 单测传 { _,_,_ -> } 防 android.util.Log "not mocked" 崩
     logger: (String, String, Throwable) -> Unit = { tag, msg, t -> Log.e(tag, msg, t) },
 ): CoroutineScope =
-    CoroutineScope(SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, t ->
-        logger(tag, "uncaught coroutine exception", t)
-    })
+    CoroutineScope(
+        SupervisorJob() + dispatcher +
+            CoroutineExceptionHandler { _, t ->
+                logger(tag, "uncaught coroutine exception", t)
+            },
+    )

@@ -29,22 +29,32 @@ class PetMenuBuilder(
     private val actions: PetMenuActions,
 ) {
     private fun dp(v: Float): Int = (v * density).toInt()
+
     private fun dpf(v: Float): Float = v * density
 
     fun build(): LinearLayout {
-        val menu = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFFFFF8E7.toInt())
-                setStroke(dp(2f), 0xFF8B5A2B.toInt())
-                cornerRadius = dpf(8f)
+        val menu =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background =
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(0xFFFFF8E7.toInt())
+                        setStroke(dp(2f), 0xFF8B5A2B.toInt())
+                        cornerRadius = dpf(8f)
+                    }
             }
-        }
-        fun row(label: String, action: () -> Unit) {
+
+        fun row(
+            label: String,
+            action: () -> Unit,
+        ) {
             if (menu.childCount > 0) {
-                menu.addView(View(context), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1f)).apply {
-                    setMargins(dp(8f), 0, dp(8f), 0)
-                }.also { (it as? LinearLayout.LayoutParams)!!.gravity = Gravity.CENTER_VERTICAL })
+                menu.addView(
+                    View(context),
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1f)).apply {
+                        setMargins(dp(8f), 0, dp(8f), 0)
+                    }.also { (it as? LinearLayout.LayoutParams)!!.gravity = Gravity.CENTER_VERTICAL },
+                )
                 (menu.getChildAt(menu.childCount - 1) as View).background =
                     android.graphics.drawable.ColorDrawable(0x338B5A2B.toInt())
             }
@@ -54,9 +64,12 @@ class PetMenuBuilder(
                     setTextColor(0xFF5A4632.toInt())
                     textSize = 14f
                     setPadding(dp(14f), dp(10f), dp(14f), dp(10f))
-                    setOnClickListener { closeMenu(); action() }
+                    setOnClickListener {
+                        closeMenu()
+                        action()
+                    }
                 },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
             )
         }
         row("转到对话") { actions.openChat() }

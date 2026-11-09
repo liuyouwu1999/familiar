@@ -6,15 +6,17 @@ plugins {
     // Kotlin 2.0 起 compose compiler 以独立插件分发（版本 = Kotlin），取代 composeOptions.kotlinCompilerExtensionVersion
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.ktlint)
 }
 
 // 正式签名配置：密钥库与密码在本机 keystore.properties（不入 git）
 val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        keystorePropertiesFile.inputStream().use { load(it) }
+val keystoreProperties =
+    Properties().apply {
+        if (keystorePropertiesFile.exists()) {
+            keystorePropertiesFile.inputStream().use { load(it) }
+        }
     }
-}
 
 android {
     namespace = "dev.liuyouwu.familiar"
@@ -51,7 +53,7 @@ android {
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
@@ -82,6 +84,20 @@ android {
     sourceSets {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
+
+    // lint（审计 E5）：baseline 冻结存量告警，CI 挂 :app:lintDebug 防新增。
+    // baseline 由 `./gradlew :app:lintDebug` 首跑生成入库；存量条目清零前不动它，
+    // 新代码告警不在 baseline 内会直接 fail。release 变体的 lintVital 同样吃这份 baseline。
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+}
+
+// ktlint（审计 E5）：当前为 report 模式——只出报告不阻断构建（CI 不 fail）。
+// 切换 fail 模式的判定 = 报告零违规：届时删除 ignoreFailures 让 ktlintCheck 接管 CI 门禁（后续独立小任务）。
+// 代码风格随 kotlin.code.style=official 走 ktlint_official。
+ktlint {
+    ignoreFailures = true
 }
 
 dependencies {

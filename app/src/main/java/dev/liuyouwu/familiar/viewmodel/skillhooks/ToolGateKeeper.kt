@@ -50,7 +50,6 @@ class ToolGateKeeper(
     /** [allowAll] 专用：true = 闸门短路全放行（测试/兜底，不触白名单与订阅判定）。 */
     private val disabled: Boolean = false,
 ) {
-
     /** 在途审批请求（null = 无）。UI collect 本流即计为前台监听者在场。 */
     data class ToolApprovalRequest(val tool: String, val summary: String, val host: String?)
 
@@ -92,12 +91,12 @@ class ToolGateKeeper(
                     Verdict.Allow
                 }
                 ToolGateResponse.DENY -> Verdict.Block(DENY_REASON)
-                null -> Verdict.Block(TIMEOUT_REASON)   // 审批超时视同拒绝
+                null -> Verdict.Block(TIMEOUT_REASON) // 审批超时视同拒绝
             }
         } finally {
             pendingApproval.value = null
             awaiting = null
-            deferred.cancel()   // 已完成时 no-op；超时/取消路径防泄漏
+            deferred.cancel() // 已完成时 no-op；超时/取消路径防泄漏
         }
     }
 
@@ -105,41 +104,48 @@ class ToolGateKeeper(
      * 组合包装：四方法转发原 hooks，beforeToolCall 交闸门（SkillHost.
      * assembleSession 首行 `toolGate.wrap(hooks)` 的唯一消费形态）。
      */
-    fun wrap(hooks: AgentHooks): AgentHooks = object : AgentHooks {
-        override fun transformContext(ctx: ContextBuilder) = hooks.transformContext(ctx)
+    fun wrap(hooks: AgentHooks): AgentHooks =
+        object : AgentHooks {
+            override fun transformContext(ctx: ContextBuilder) = hooks.transformContext(ctx)
 
-        override suspend fun beforeToolCall(call: ContentBlock.ToolCall): Verdict =
-            this@ToolGateKeeper.beforeToolCall(call)
+            override suspend fun beforeToolCall(call: ContentBlock.ToolCall): Verdict = this@ToolGateKeeper.beforeToolCall(call)
 
-        override fun finishTurn(turn: Int, msgs: List<AgentMessage>): Decision =
-            hooks.finishTurn(turn, msgs)
+            override fun finishTurn(
+                turn: Int,
+                msgs: List<AgentMessage>,
+            ): Decision = hooks.finishTurn(turn, msgs)
 
-        override fun onRunEnd(result: RunResult, chain: RunChain) =
-            hooks.onRunEnd(result, chain)
-    }
+            override fun onRunEnd(
+                result: RunResult,
+                chain: RunChain,
+            ) = hooks.onRunEnd(result, chain)
+        }
 
     /** url 参数 → URI.host（解析失败/缺参 → null：无 host 不进白名单路径）。 */
     private fun hostOf(call: ContentBlock.ToolCall): String? =
         urlOf(call.argsJson)?.let { url -> runCatching { URI(url).host }.getOrNull() }
 
-    private fun urlOf(argsJson: String): String? = runCatching {
-        GSON.fromJson(argsJson, JsonObject::class.java)
-            .get("url")?.takeIf { it.isJsonPrimitive }?.asString
-    }.getOrNull()
+    private fun urlOf(argsJson: String): String? =
+        runCatching {
+            GSON.fromJson(argsJson, JsonObject::class.java)
+                .get("url")?.takeIf { it.isJsonPrimitive }?.asString
+        }.getOrNull()
 
     /** 审批框正文（人话摘要，非裸 argsJson）。 */
-    private fun summaryOf(call: ContentBlock.ToolCall): String = when (call.name) {
-        "http_get" -> "请求网址：${urlOf(call.argsJson) ?: call.argsJson}"
-        "open_url" -> "打开链接：${urlOf(call.argsJson) ?: call.argsJson}"
-        "clipboard_read" -> "读取系统剪贴板的文本内容"
-        "clipboard_write" -> "写入剪贴板：${textPreview(call.argsJson) ?: call.argsJson}"
-        else -> call.argsJson
-    }
+    private fun summaryOf(call: ContentBlock.ToolCall): String =
+        when (call.name) {
+            "http_get" -> "请求网址：${urlOf(call.argsJson) ?: call.argsJson}"
+            "open_url" -> "打开链接：${urlOf(call.argsJson) ?: call.argsJson}"
+            "clipboard_read" -> "读取系统剪贴板的文本内容"
+            "clipboard_write" -> "写入剪贴板：${textPreview(call.argsJson) ?: call.argsJson}"
+            else -> call.argsJson
+        }
 
-    private fun textPreview(argsJson: String): String? = runCatching {
-        GSON.fromJson(argsJson, JsonObject::class.java)
-            .get("text")?.takeIf { it.isJsonPrimitive }?.asString?.take(80)
-    }.getOrNull()
+    private fun textPreview(argsJson: String): String? =
+        runCatching {
+            GSON.fromJson(argsJson, JsonObject::class.java)
+                .get("text")?.takeIf { it.isJsonPrimitive }?.asString?.take(80)
+        }.getOrNull()
 
     companion object {
         /** 测试/兜底：全放行闸门（SkillHost 缺省注入——既有测试与未接线装配零改动）。 */

@@ -10,7 +10,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * 主机名（域名）一律不安全——不做 InetAddress 解析，测试与运行时都不触网。
  */
 object NetGuards {
-
     /**
      * 目标主机是否"明文 http 安全"（本机/局域网）：
      * - IPv4：回环 127.0.0.0/8 + RFC1918 三段（10/8、172.16/12、192.168/16）→ true；
@@ -24,7 +23,7 @@ object NetGuards {
     fun isPlaintextSafeHost(host: String): Boolean {
         val h = host.trim().lowercase().removeSurrounding("[", "]")
         if (h.isEmpty()) return false
-        if (h == "localhost") return true   // 回环保留名（裁定 2）：字面特判，不解析
+        if (h == "localhost") return true // 回环保留名（裁定 2）：字面特判，不解析
         if (h.contains(':')) {
             // IPv6 字面量（压缩形）：精确 "::1" 或 fe80:: 前缀（fe80::/10 链路本地段）
             if (h == "::1") return true
@@ -34,16 +33,17 @@ object NetGuards {
         // 仅当确实是合法点分十进制 IPv4 才按私网段判定；域名一律不安全
         // （"192.168.evil.com" 这类私网前缀开头的域名不能靠 startsWith 放过）
         val octets = h.split('.')
-        val isIpv4 = octets.size == 4 &&
-            octets.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() in 0..255 }
+        val isIpv4 =
+            octets.size == 4 &&
+                octets.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() in 0..255 }
         if (!isIpv4) return false
         val o1 = octets[0].toInt()
         val o2 = octets[1].toInt()
         return when {
-            o1 == 127 -> true                        // 回环 127.0.0.0/8
-            o1 == 10 -> true                         // RFC1918 10/8
-            o1 == 172 && o2 in 16..31 -> true        // RFC1918 172.16/12（172.32 起越界）
-            o1 == 192 && o2 == 168 -> true           // RFC1918 192.168/16
+            o1 == 127 -> true // 回环 127.0.0.0/8
+            o1 == 10 -> true // RFC1918 10/8
+            o1 == 172 && o2 in 16..31 -> true // RFC1918 172.16/12（172.32 起越界）
+            o1 == 192 && o2 == 168 -> true // RFC1918 192.168/16
             else -> false
         }
     }
@@ -70,7 +70,11 @@ object NetGuards {
      *
      * @param what 文案名词：缺省 "API Key"（C/D/A/B 出缝），McpClient 传 "MCP token"
      */
-    fun guardPlaintextCredential(url: String, credential: String, what: String = "API Key") {
+    fun guardPlaintextCredential(
+        url: String,
+        credential: String,
+        what: String = "API Key",
+    ) {
         if (credential.isBlank()) return
         val parsed = url.toHttpUrlOrNull() ?: return
         if (parsed.scheme == "http" && !isPlaintextSafeHost(parsed.host)) {

@@ -18,8 +18,16 @@ class BubbleView(context: Context, density: Float, private val minWidthPx: Int) 
     private val tailW = 12f * density
     private val radius = 10f * density
     private val border = 1.5f * density
-    private val darkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF3A4A63.toInt(); style = Paint.Style.FILL }
-    private val lightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+    private val darkPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF3A4A63.toInt()
+            style = Paint.Style.FILL
+        }
+    private val lightPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
 
     /** 尾巴指向目标（鱼心）在泡本体内的 x 坐标：泡被钳回屏内后，尾巴滑向鱼头方向 */
     var tailTargetPx = 70f * density
@@ -38,18 +46,18 @@ class BubbleView(context: Context, density: Float, private val minWidthPx: Int) 
      *  省略号即超 4 行，字号 12sp→10sp 降一档重测，仍溢出由 ellipsize END 兜底。
      *  返回定档窗宽（含左右内边距），钳在 [鱼身宽, 上限]——任何输入不糊满屏幕 */
     fun fitContent(maxW: Int): Int {
-        textSize = 12f  // 终审 I-1：先复位再降档，防字号粘滞（View 复用，长泡降档后短泡不回 12f）
+        textSize = 12f // 终审 I-1：先复位再降档，防字号粘滞（View 复用，长泡降档后短泡不回 12f）
         val cap = maxW.coerceAtLeast(minWidthPx)
         measure(
             View.MeasureSpec.makeMeasureSpec(cap, View.MeasureSpec.AT_MOST),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         val l = layout
         if (l != null && l.lineCount >= 4 && l.getEllipsisCount(l.lineCount - 1) > 0) {
             textSize = 10f
             measure(
                 View.MeasureSpec.makeMeasureSpec(cap, View.MeasureSpec.AT_MOST),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
             )
         }
         return measuredWidth.coerceIn(minWidthPx, cap)
@@ -62,24 +70,28 @@ class BubbleView(context: Context, density: Float, private val minWidthPx: Int) 
         // 尾巴滑向泡本体内"鱼心"的位置（泡整体钳回屏内后仍指向鱼头），钳在泡身内
         val tailX = tailTargetPx.coerceIn(tailW, w - tailW)
         // 描边：先画加粗深色底（泡身+尾巴整体轮廓），再叠白色内层
-        val outline = android.graphics.Path().apply {
-            addRoundRect(body, radius, radius, android.graphics.Path.Direction.CW)
-            moveTo(tailX - tailW / 2, h - tailH - 1f)
-            lineTo(tailX, h)
-            lineTo(tailX + tailW / 2, h - tailH - 1f)
-            close()
-        }
+        val outline =
+            android.graphics.Path().apply {
+                addRoundRect(body, radius, radius, android.graphics.Path.Direction.CW)
+                moveTo(tailX - tailW / 2, h - tailH - 1f)
+                lineTo(tailX, h)
+                lineTo(tailX + tailW / 2, h - tailH - 1f)
+                close()
+            }
         canvas.drawPath(outline, darkPaint)
-        val inner = android.graphics.Path().apply {
-            addRoundRect(
-                RectF(border, border, w - border, h - tailH - border),
-                radius, radius, android.graphics.Path.Direction.CW
-            )
-            moveTo(tailX - tailW / 2 + border, h - tailH - 1f)
-            lineTo(tailX, h - border)
-            lineTo(tailX + tailW / 2 - border, h - tailH - 1f)
-            close()
-        }
+        val inner =
+            android.graphics.Path().apply {
+                addRoundRect(
+                    RectF(border, border, w - border, h - tailH - border),
+                    radius,
+                    radius,
+                    android.graphics.Path.Direction.CW,
+                )
+                moveTo(tailX - tailW / 2 + border, h - tailH - 1f)
+                lineTo(tailX, h - border)
+                lineTo(tailX + tailW / 2 - border, h - tailH - 1f)
+                close()
+            }
         canvas.drawPath(inner, lightPaint)
         super.onDraw(canvas)
     }

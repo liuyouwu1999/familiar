@@ -9,6 +9,13 @@ trim_trailing_whitespace = true
 [*.kt]
 indent_style = space
 indent_size = 4
+# ktlint（审计 E5）：代码风格随 kotlin.code.style=official 走 ktlint_official。
+# function-naming 默认要求函数小写驼峰，但 Jetpack Compose 官方约定返回 Unit 的
+# UI composable 用 PascalCase（代码库全部如此，Android 官方指南同向）——按 ktlint
+# 提供的开关豁免 @Composable 注解函数，规则对其余函数保持生效。
+ktlint_function_naming_ignore_when_annotated_with = Composable
+
+[*.{kt,kts}]
 
 [*.{yml,yaml,json,md}]
 indent_style = space

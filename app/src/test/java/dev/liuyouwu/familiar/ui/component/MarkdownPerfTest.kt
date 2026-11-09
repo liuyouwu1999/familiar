@@ -17,7 +17,6 @@ import org.junit.Test
  * 结构由编译器保证，不在此断言。
  */
 class MarkdownPerfTest {
-
     @Test
     fun `greek letter map is a top-level singleton across consecutive accesses`() {
         val first = LATEX_GREEK_LETTERS

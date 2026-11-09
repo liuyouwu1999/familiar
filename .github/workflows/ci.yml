@@ -18,3 +18,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests + assemble debug
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Android Lint（baseline 之外零新增告警，审计 E5）
+        run: ./gradlew :app:lintDebug
+      - name: ktlint report（report 模式：ignoreFailures=true，报告在 build/reports/ktlint/）
+        run: ./gradlew :app:ktlintCheck

@@ -2,7 +2,6 @@ package dev.liuyouwu.familiar.viewmodel
 
 import dev.liuyouwu.familiar.core.llm.model.BlockCodec
 import dev.liuyouwu.familiar.core.llm.model.ContentBlock
-import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,7 +20,6 @@ import org.junit.Test
  *    回退 content 单 textBlock。
  */
 class UiMessagesFromLightRowsTest {
-
     private fun lightRow(
         id: Long,
         role: String,
@@ -38,10 +36,11 @@ class UiMessagesFromLightRowsTest {
 
     @Test
     fun `attachment row is marked lazy with empty inline attachments`() {
-        val rows = listOf(
-            lightRow(1, "user", "带图问", hasAttachment = true),
-            lightRow(2, "assistant", "纯文本答"),
-        )
+        val rows =
+            listOf(
+                lightRow(1, "user", "带图问", hasAttachment = true),
+                lightRow(2, "assistant", "纯文本答"),
+            )
         val ui = uiMessagesFromLightRows(rows)
 
         assertEquals(listOf("1", "2"), ui.map { it.id })
@@ -54,12 +53,13 @@ class UiMessagesFromLightRowsTest {
     @Test
     fun `multi image user group merges and marks on any row attachment`() {
         val turnId = "1:u1"
-        val rows = listOf(
-            // 首行带正文但无附件列（理论形态：图在后续扇出行）
-            lightRow(10, "user", "三图", turnId = turnId, blocks = BlockCodec.toJson(listOf(ContentBlock.Text("三图")))),
-            lightRow(11, "user", "", turnId = turnId, hasAttachment = true, blocks = "[]"),
-            lightRow(12, "user", "", turnId = turnId, hasAttachment = true, blocks = "[]"),
-        )
+        val rows =
+            listOf(
+                // 首行带正文但无附件列（理论形态：图在后续扇出行）
+                lightRow(10, "user", "三图", turnId = turnId, blocks = BlockCodec.toJson(listOf(ContentBlock.Text("三图")))),
+                lightRow(11, "user", "", turnId = turnId, hasAttachment = true, blocks = "[]"),
+                lightRow(12, "user", "", turnId = turnId, hasAttachment = true, blocks = "[]"),
+            )
         val ui = uiMessagesFromLightRows(rows)
 
         assertEquals("合并组单条消息，id=首行", listOf("10"), ui.map { it.id })
@@ -70,14 +70,19 @@ class UiMessagesFromLightRowsTest {
     @Test
     fun `structure columns pass through and legacy null blocks fall back to content`() {
         val segments = """["段一","段二"]"""
-        val rows = listOf(
-            lightRow(
-                20, "assistant", "结构答",
-                blocks = BlockCodec.toJson(listOf(ContentBlock.Thinking("想"), ContentBlock.Text("结构答"))),
-                turnId = "1:u2", segments = segments,
-            ),
-            lightRow(21, "assistant", "旧行正文"),   // blocks=NULL：content 直出
-        )
+        val rows =
+            listOf(
+                lightRow(
+                    20,
+                    "assistant",
+                    "结构答",
+                    blocks = BlockCodec.toJson(listOf(ContentBlock.Thinking("想"), ContentBlock.Text("结构答"))),
+                    turnId = "1:u2",
+                    segments = segments,
+                ),
+                // blocks=NULL：content 直出
+                lightRow(21, "assistant", "旧行正文"),
+            )
         val ui = uiMessagesFromLightRows(rows)
 
         assertEquals("想", ui[0].thinking)
@@ -88,13 +93,17 @@ class UiMessagesFromLightRowsTest {
 
     @Test
     fun `hasAttachmentByMessageId follows mapper grouping rules`() {
-        val rows = listOf(
-            lightRow(30, "user", "a", turnId = "t1", hasAttachment = true),
-            lightRow(31, "user", "", turnId = "t1"),                    // 同组：组级 any → 首行 true
-            lightRow(32, "assistant", "b", turnId = "t2", hasAttachment = true), // 非合并组：逐行各自
-            lightRow(33, "assistant", "c", turnId = "t2"),              // 同 turnId 但非 user 组：独立行
-            lightRow(34, "user", "孤立行", turnId = null),
-        )
+        val rows =
+            listOf(
+                lightRow(30, "user", "a", turnId = "t1", hasAttachment = true),
+                // 同组：组级 any → 首行 true
+                lightRow(31, "user", "", turnId = "t1"),
+                // 非合并组：逐行各自
+                lightRow(32, "assistant", "b", turnId = "t2", hasAttachment = true),
+                // 同 turnId 但非 user 组：独立行
+                lightRow(33, "assistant", "c", turnId = "t2"),
+                lightRow(34, "user", "孤立行", turnId = null),
+            )
         val map = hasAttachmentByMessageId(rows)
 
         assertEquals(true, map[30])

@@ -1,6 +1,6 @@
 package dev.liuyouwu.familiar.ui.model
 
-/**
+/*
  * Ui 层投影模型（审计 A1，ui→data.local 收口）：ui 包不再 import data.local，
  * Entity 在 VM/Repo 出口经 `XxxEntity.toUi()`（data 层 UiMappers）折成本组模型后
  * 才进 Ui。字段 = 各屏**实际消费的列**（现场投影，不搬运全量实体）；

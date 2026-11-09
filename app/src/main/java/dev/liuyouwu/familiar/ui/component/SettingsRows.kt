@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.liuyouwu.familiar.ui.theme.WoodBorder
 
-/**
+/*
  * 设置屏共享行组件（审计 A6——SettingsDialog 拆分的收口件）：
  * - [SettingsSection]：分节标题（titleSmall/primary，带上/下间距参数——现场各节
  *   16/8、联网搜索 16/4、首节无上间距的实态收敛）；
@@ -76,25 +76,25 @@ internal fun SettingsSwitchRow(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = titleFontWeight
+                fontWeight = titleFontWeight,
             )
             description?.let {
                 Text(
                     it,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
             }
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
         )
     }
 }
@@ -171,7 +171,7 @@ internal fun SettingsDirtyTextField(
         label = { Text(label) },
         modifier = modifier,
         singleLine = singleLine,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType ?: KeyboardType.Text)
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType ?: KeyboardType.Text),
     )
 }
 
@@ -195,20 +195,20 @@ internal fun SettingsTextFieldRow(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         SettingsDirtyTextField(
             state = state,
             label = label,
             modifier = Modifier.weight(1f),
-            keyboardType = keyboardType
+            keyboardType = keyboardType,
         )
         Spacer(modifier = Modifier.width(8.dp))
         Button(
             shape = RectangleShape,
             border = BorderStroke(1.dp, WoodBorder),
             enabled = saveEnabled(state.value),
-            onClick = { onCommit(state) }
+            onClick = { onCommit(state) },
         ) {
             Text("保存")
         }
@@ -217,7 +217,7 @@ internal fun SettingsTextFieldRow(
         Text(
             it,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
         )
     }
 }
