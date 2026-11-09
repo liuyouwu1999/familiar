@@ -27,6 +27,13 @@ object LanScanner {
     /** 误报过滤用（审计 P3：每次 probe 重新编译提为常量） */
     private val ID_KEY_REGEX = Regex("\"id\"\\s*:")
 
+    /** 探测复用单一 client（审计 P8：原 scan() 每次调用新建 OkHttpClient，
+     *  连接池/线程池随扫描反复创建，借单例复用） */
+    private val probeClient = OkHttpClient.Builder()
+        .connectTimeout(400, TimeUnit.MILLISECONDS)
+        .readTimeout(2500, TimeUnit.MILLISECONDS)
+        .build()
+
     private data class Candidate(val ip: String, val port: Int)
 
     suspend fun scan(
@@ -35,11 +42,6 @@ object LanScanner {
     ): List<FoundServer> = withContext(Dispatchers.IO) {
         val prefix = ipPrefix(localIp)
             ?: return@withContext emptyList()
-
-        val client = OkHttpClient.Builder()
-            .connectTimeout(400, TimeUnit.MILLISECONDS)
-            .readTimeout(2500, TimeUnit.MILLISECONDS)
-            .build()
 
         coroutineScope {
             val ips = (1..254).map { "$prefix$it" }
@@ -52,7 +54,7 @@ object LanScanner {
                     // 可中断获取：协程取消时不再死等信号量
                     runInterruptible { semaphore.acquire() }
                     try {
-                        val result = probe(c.ip, c.port, client)
+                        val result = probe(c.ip, c.port, probeClient)
                         val d = done.incrementAndGet()
                         onProgress(d, candidates.size)
                         result
