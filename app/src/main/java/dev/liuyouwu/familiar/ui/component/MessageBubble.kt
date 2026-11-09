@@ -101,6 +101,13 @@ private val TRUNCATION_MARKER = dev.liuyouwu.familiar.viewmodel.RunMarkerTexts.T
 private fun isTruncatedMessage(content: String): Boolean =
     content.trimEnd().endsWith(TRUNCATION_MARKER)
 
+/** 附件惰性加载位（审计复审 Minor-4）：loading=true 在途（占位框），false 即终态
+ *  ——payload=null 表示空结果（行已删/无可显附件），不再渲染占位 */
+private data class LazyAttachmentUi(
+    val payload: dev.liuyouwu.familiar.ui.model.AttachmentPayload?,
+    val loading: Boolean,
+)
+
 /**
  * Content segment for stable streaming rendering.
  * Tables are rendered as code blocks during streaming to avoid layout jumps.
@@ -487,17 +494,22 @@ fun MessageBubble(
 
                     // 附件惰性加载（审计 P1-4）：轻量读路径的 hasAttachment 行在 VM 层
                     // 附件置空 + 打标，此处经 onLoadAttachment 按需取真值（repo LruCache
-                    // 8 条，滚回可见不重复触库）。加载中沿用图片解码同款占位框。
-                    val lazyAttachments by androidx.compose.runtime.produceState<
-                        dev.liuyouwu.familiar.ui.model.AttachmentPayload?
-                        >(initialValue = null, key1 = message.id) {
-                        if (message.hasLazyAttachment) value = onLoadAttachment?.invoke(message.id)
+                    // 8 条，滚回可见不重复触库）。loading 哨兵区分「加载中」（占位框）
+                    // 与「空结果」（loader 返 null = 行已删/无可显附件，不渲染占位，
+                    // 审计复审 Minor-4——不再无限期挂着占位框）。
+                    val lazyAttachment by androidx.compose.runtime.produceState(
+                        initialValue = LazyAttachmentUi(payload = null, loading = message.hasLazyAttachment),
+                        key1 = message.id,
+                    ) {
+                        if (message.hasLazyAttachment) {
+                            value = LazyAttachmentUi(payload = onLoadAttachment?.invoke(message.id), loading = false)
+                        }
                     }
-                    val images = if (message.hasLazyAttachment) lazyAttachments?.images.orEmpty()
+                    val images = if (message.hasLazyAttachment) lazyAttachment.payload?.images.orEmpty()
                         else message.images.ifEmpty { listOfNotNull(message.imageBase64) }
-                    val attachmentSummaries = if (message.hasLazyAttachment) lazyAttachments?.summaries.orEmpty()
+                    val attachmentSummaries = if (message.hasLazyAttachment) lazyAttachment.payload?.summaries.orEmpty()
                         else message.attachments
-                    if (message.hasLazyAttachment && lazyAttachments == null && onLoadAttachment != null) {
+                    if (message.hasLazyAttachment && lazyAttachment.loading) {
                         // 附件在途占位（与下方图片解码占位同形）
                         Box(
                             modifier = Modifier

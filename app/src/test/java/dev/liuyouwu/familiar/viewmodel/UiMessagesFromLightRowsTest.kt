@@ -6,6 +6,7 @@ import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -97,9 +98,49 @@ class UiMessagesFromLightRowsTest {
         val map = hasAttachmentByMessageId(rows)
 
         assertEquals(true, map[30])
-        assertEquals("组内成员不单独立键（消息 id=首行）", null, map[31])
+        assertEquals("组内成员不单立项（消息 id=首行）", null, map[31])
         assertEquals(true, map[32])
         assertEquals(false, map[33])
         assertEquals(false, map[34])
+    }
+
+    // ---------------- 审计复审 Important-1：prepend 副本不遮蔽 DB 新值、裁剪退场 ----------------
+
+    @Test
+    fun `light window rows take precedence over prepend copies - db update wins`() {
+        // 滚顶加载后 DB 里的旧消息被编辑：轻量流发新值，prepend 还持取页时的旧快照
+        val updated = lightRow(101, "user", "编辑后的正文")
+        val staleCopy = updated.copy(content = "旧正文（取页时快照）")
+        val light = listOf(lightRow(200, "user", "最新消息"), updated)
+        val prepended = listOf(lightRow(50, "user", "更早页"), staleCopy, lightRow(99, "user", "缝行"))
+
+        val merged = mergeLightRows(light, prepended)
+
+        assertEquals(listOf(50L, 99L, 101L, 200L), merged.map { it.id })
+        assertEquals("重叠 id 上 DB 新值接管，旧副本被压掉", "编辑后的正文", merged.first { it.id == 101L }.content)
+        assertEquals("同一 id 只出现一次", 1, merged.count { it.id == 101L })
+    }
+
+    @Test
+    fun `trim drops prepend rows covered by light window and ghosts`() {
+        val light = listOf(lightRow(101, "user", "a"), lightRow(200, "user", "b"))
+        // 150 在 prepend 有副本但流内无此行（DB 已删）：>= 窗口最小 id → 裁掉（不留幽灵）
+        val prepended = listOf(lightRow(50, "user", "旧"), lightRow(101, "user", "旧副本"), lightRow(150, "user", "幽灵"))
+
+        val trimmed = trimmedPrepend(prepended, light)
+
+        assertEquals("只留窗口之外的行", listOf(50L), trimmed?.map { it.id })
+    }
+
+    @Test
+    fun `trim is null when no change and clears prepend on empty window`() {
+        val light = listOf(lightRow(101, "user", "a"))
+        assertNull("全部行已在窗口外 → 无需裁剪（跳过重发射）", trimmedPrepend(listOf(lightRow(50, "user", "旧")), light))
+        assertNull("prepend 为空 → 无需裁剪", trimmedPrepend(emptyList(), light))
+        assertEquals(
+            "窗口为空（清空会话）→ prepend 整体退场",
+            emptyList<MessageLightRow>(),
+            trimmedPrepend(listOf(lightRow(50, "user", "旧"), lightRow(60, "user", "旧2")), emptyList()),
+        )
     }
 }

@@ -610,13 +610,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ===== 聊天页消息读路径（审计 P1-4：单权威流 + 向上分页）=====
 
-    /** 首屏窗口（与 [MessagePager.limit] 初始值同源）：进入会话只取最新 200 条 */
-    private val initialWindow = 200
+    companion object {
+        /** 分页窗口（首屏与滚顶步长同源；审计复审 Minor-7：字面量收敛单点） */
+        private const val MESSAGE_PAGE_WINDOW = 200
+    }
 
     /** 每会话分页状态（VM 单实例跨会话，per-conversation 隔离；量级 = 会话数，可忽略） */
     private class MessagePager {
         /** 轻量流查询窗口：滚顶加载单调提升（flatMapLatest 以新 limit 重查询） */
-        val limit = MutableStateFlow(200)
+        val limit = MutableStateFlow(MESSAGE_PAGE_WINDOW)
 
         /** getMessagesBefore 一次性取回的旧行（升序缓存）：重查询在途时的即时填缝，
          *  与轻量流窗口按 id 去重归并 */
@@ -651,13 +653,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val pager = pagerFor(conversationId)
         return combine(
             pager.limit.flatMapLatest { limit ->
-                chatRepository.getMessagesLight(conversationId, maxOf(initialWindow, limit))
+                chatRepository.getMessagesLight(conversationId, maxOf(MESSAGE_PAGE_WINDOW, limit))
             },
             pager.prepend,
         ) { lightRows, prepended ->
-            // 填缝去重：prepend 旧行与轻量窗口行按 id 归并升序（id 自增单调，
-            // 与 (timestamp,id) 序一致；getMessagesBefore 的 keyset 锚同按 id）
-            (prepended + lightRows).distinctBy { it.id }.sortedBy { it.id }
+            // 审计复审 Important-1：轻量窗口行优先——重叠 id 的 prepend 副本被 DB
+            // 权威新值接管（滚顶后编辑/删除不被旧行副本遮蔽、不留幽灵气泡）；
+            // 同时把 prepend 裁剪到窗口之外（重查询覆盖后副本退场，窗口为空=
+            // 清空会话时整体退场）。裁剪触发 prepend 重发射，幂等收敛不震荡。
+            trimmedPrepend(prepended, lightRows)?.let { pager.prepend.value = it }
+            mergeLightRows(lightRows, prepended)
         }.map { rows ->
             pager.earliestId = rows.minOfOrNull { it.id }   // keyset 锚随窗口更新
             uiMessagesFromLightRows(rows)
@@ -675,13 +680,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val earliest = pager.earliestId ?: return@launch   // 首屏未回（空会话/首帧未达）
-                val older = chatRepository.getMessagesBefore(conversationId, earliest, initialWindow)
+                val older = chatRepository.getMessagesBefore(conversationId, earliest, MESSAGE_PAGE_WINDOW)
                 if (older.isEmpty()) {
                     pager.exhausted = true
                     return@launch
                 }
                 pager.prepend.value = pager.prepend.value + older
-                pager.limit.value = pager.limit.value + initialWindow
+                pager.limit.value = pager.limit.value + MESSAGE_PAGE_WINDOW
             } finally {
                 pager.loading.set(false)
             }
@@ -994,7 +999,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun onConversationSwitched(newId: Long) {
         val prev = previousConversationId
         previousConversationId = newId
-        if (prev != null && prev != newId) maybeAutoSummarize(prev)
+        if (prev != null && prev != newId) {
+            maybeAutoSummarize(prev)
+            // 审计复审 Important-1：离开会话即弃其分页状态（prepend 副本/limit/探底标记）
+            // ——重进按首屏窗口重建，杜绝跨会话陈旧 prepend 遮蔽/幽灵行
+            messagePagers.remove(prev)
+        }
     }
 
     /** 退出/切换挂点（BackHandler/顶栏返回）：走节流（≥8 条新增 + 距上次小结 ≥1h）。 */
@@ -1196,4 +1206,29 @@ internal fun hasAttachmentByMessageId(rows: List<MessageLightRow>): Map<Long, Bo
         i = j
     }
     return out
+}
+
+/**
+ * 轻量窗口行 × prepend 填缝行的归并（审计复审 Important-1，纯函数——JVM 可测）：
+ * **窗口行优先**（[distinctBy] 取首遇）——重叠 id 上 DB 权威新值接管 prepend 副本，
+ * 滚顶加载后编辑/删除旧消息不再被取页时的快照遮蔽；去重后按 id 升序（id 自增单调，
+ * 与 (timestamp,id) 序一致）。
+ */
+internal fun mergeLightRows(lightRows: List<MessageLightRow>, prepended: List<MessageLightRow>): List<MessageLightRow> =
+    (lightRows + prepended).distinctBy { it.id }.sortedBy { it.id }
+
+/**
+ * prepend 裁剪判定（审计复审 Important-1，纯函数）：只保留轻量窗口之外的旧行
+ * （id < 窗口最小 id）——limit 提升后的重查询覆盖到的行，其 prepend 副本退场；
+ * 窗口为空（清空会话）→ prepend 整体退场。返回 null = 无需裁剪（调用方据此
+ * 跳过 StateFlow 重赋值，避免多余重发射）。
+ */
+internal fun trimmedPrepend(
+    prepended: List<MessageLightRow>,
+    lightRows: List<MessageLightRow>,
+): List<MessageLightRow>? {
+    if (prepended.isEmpty()) return null
+    val minLightId = lightRows.minOfOrNull { it.id }
+    val next = if (minLightId == null) emptyList() else prepended.filter { it.id < minLightId }
+    return if (next == prepended) null else next
 }
