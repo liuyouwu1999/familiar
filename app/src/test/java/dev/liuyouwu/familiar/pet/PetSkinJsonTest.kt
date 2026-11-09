@@ -183,16 +183,16 @@ class PetSkinJsonTest {
 
     @Test fun `内置蓝资产petjson逐帧断言`() {
         // 蓝皮全量动作皮——idle 单帧定格（空闲不自主活动），sleep 15 帧入睡序列
-        // （播完定住蜷姿）、turn 8 帧，另有 9 个表演 clip（one-shot）。基态三帧表（busy/done/error/shy png）不变
+        // （播完定住蜷姿）、turn 8 帧，另有 9 个表演 clip（one-shot）。基态三帧表（busy/done/error/shy webp，审计 2.9 png→webp）帧名不变
         val s = PetSkinJson.parse("blue", builtinJson("blue"), { true }, warnFn)!!
         assertEquals("蓝色大肥鱼", s.name)
         assertEquals("#1976D2", s.accent)
-        assertEquals("idle_0.png", s.avatarFile)   // 头像链仍指旧 png 首帧
-        assertEquals("head.png", s.headFile)
+        assertEquals("avatar.webp", s.avatarFile)   // P6 审计 2.9：头像链改指 256px 原画 avatar.webp（idle clip 用的是 512px 重绘版）
+        assertEquals("head.webp", s.headFile)
         // idle 单帧定格：不循环、不自主活动（需要互动/表演时走对应 clip）
         assertEquals(listOf<Pair<String, Long>>("idle_0.webp" to 9000L), s.clips.getValue(PetHub.Mood.IDLE).frames)
-        assertEquals((0..3).map { "busy_$it.png" to 240L }, s.clips.getValue(PetHub.Mood.BUSY).frames)
-        assertEquals(listOf("error_0.png" to 1000L), s.clips.getValue(PetHub.Mood.ERROR).frames)
+        assertEquals((0..3).map { "busy_$it.webp" to 240L }, s.clips.getValue(PetHub.Mood.BUSY).frames)
+        assertEquals(listOf("error_0.webp" to 1000L), s.clips.getValue(PetHub.Mood.ERROR).frames)
         assertEquals((0..7).map { "turn_$it.webp" to 160L }, s.clips.getValue(PetHub.Mood.TURN).frames)
         assertEquals(15, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
         assertEquals(false, s.clips.getValue(PetHub.Mood.SLEEP).loop)   // 入睡序列播完定住蜷姿
@@ -213,8 +213,8 @@ class PetSkinJsonTest {
         val s = PetSkinJson.parse("orange", builtinJson("orange"), { true }, warnFn)!!
         assertEquals("中转站的大肥鱼", s.name)
         assertEquals("#D97757", s.accent)
-        assertEquals("idle_0.png", s.avatarFile)
-        assertEquals("head.png", s.headFile)
+        assertEquals("avatar.webp", s.avatarFile)
+        assertEquals("head.webp", s.headFile)
         assertEquals(1, s.clips.getValue(PetHub.Mood.IDLE).frames.size)   // 空闲定格单帧
         assertEquals(15, s.clips.getValue(PetHub.Mood.SLEEP).frames.size)
         assertEquals(false, s.clips.getValue(PetHub.Mood.SLEEP).loop)
@@ -228,12 +228,12 @@ class PetSkinJsonTest {
 
     @Test fun `内置资产目录文件齐`() {
         // PNG/webp 落盘断言（直读 assets 本体）：AGP 单测 workingDir=app/ 模块目录，兼容从仓库根跑。
-        // 蓝橘两皮同构：基础 18（旧 png 头像链/基态帧 + pet.json）+ 248 帧 webp（16×7 + 8 + 32×4），
-        // 双向集合断言，多文件/缺文件都红
+        // 蓝橘两皮同构：基础 13（基态帧 webp + 头像/头图 webp + pet.json，审计 2.9 全量 webp 化）+
+        // 248 帧 webp（16×7 + 8 + 32×4），双向集合断言，多文件/缺文件都红
         val base = listOf(java.io.File("src/main/assets/pets"), java.io.File("app/src/main/assets/pets")).first { it.isDirectory }
         val baseFiles = (
-            (0..1).map { "idle_$it.png" } + (0..3).map { "busy_$it.png" } + (0..5).map { "done_$it.png" } +
-                listOf("error_0.png", "shy_0.png", "turn_0.png", "sleep_0.png", "head.png", "pet.json")
+            (0..3).map { "busy_$it.webp" } + (0..5).map { "done_$it.webp" } +
+                listOf("error_0.webp", "shy_0.webp", "avatar.webp", "head.webp", "pet.json")
             ).toSet()
         val perfFiles = (
             (0..15).map { "dance_$it.webp" } + (0..15).map { "wave_$it.webp" } + (0..15).map { "jump_$it.webp" } +
