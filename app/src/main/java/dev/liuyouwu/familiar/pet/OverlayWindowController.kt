@@ -20,8 +20,11 @@ import android.widget.LinearLayout
 import kotlin.math.abs
 import kotlinx.coroutines.sync.Mutex
 
-/** 触摸手势的业务反应集（审计 A4 拆件）：手势识别与窗口操作归控制器，
- *  台词/庆祝/动画/计数/位置持久化等宠物业务留 Service */
+/** 触摸手势的宠物业务反应集（审计 A4 拆件）：手势识别（双击窗口/350ms/2500f 阈值、
+ *  tap 流式守卫读态）与窗口操作归控制器；开口类业务的副作用全部归 Service——
+ *  单击台词由控制器选词（PetHub.pickLine，纯选词无副作用）随 [onSingleTapConfirmed]
+ *  携带，态复查与 say/openChat 裁定在 Service；甩远吐槽整块（流式守卫 + TURN 台词）
+ *  经 [onFling] 归 Service；庆祝/摇摆/压扁动画、互动计数、位置持久化同理 */
 class PetTouchHooks(
     val wake: () -> Unit,
     val noteTouch: () -> Unit,
@@ -29,14 +32,21 @@ class PetTouchHooks(
     val startSwing: () -> Unit,
     val stopSwing: () -> Unit,
     val squashWobble: () -> Unit,
+    /** 单击台词确认（360ms 双击窗口已过）：line=进窗时已选好的台词；执行时态复查
+     *  （SPEAKING→openChat / THINKING·SEARCHING→忽略 / 其余→say+计数）归 Service */
+    val onSingleTapConfirmed: (line: String) -> Unit,
+    /** 甩远吐槽（速度阈值已过）：流式态守卫（四轮 F2）+ TURN 台词归 Service */
+    val onFling: () -> Unit,
     val savePosition: (nx: Float, ny: Float) -> Unit,
 )
 
 /**
  * 悬浮窗窗口控制器（审计 A4 拆件）：鱼/泡/菜单三窗的四套 LayoutParams、attach/detach
  * 状态机与挂载单飞锁、Insets 校准、贴边钳制、触摸手势识别全部收口在这里——
- * PetOverlayService 只剩生命周期接线与宠物业务（台词/菜单动作/庆祝动画）。
- * 业务不经本类：复习泡点击/菜单构建/手势反应经构造回调打回 Service。
+ * PetOverlayService 只剩生命周期接线与宠物业务（台词开口/菜单动作/庆祝动画）。
+ * 开口类副作用不经本类：复习泡点击/菜单构建/单击台词裁定/甩远吐槽/庆祝/计数/持久化
+ * 经构造回调打回 Service；本类保留的 PetHub 触点仅限无副作用的读态守卫（tap/fling
+ * 流式守卫的 mood 读取）与选词（pickLine("tap") 随钩子携带）。
  *
  * 挂载纪律：所有挂载入口（onStartCommand / 后台守卫收集器 / 状态收集器兜底）都跨
  * 挂起点，check-then-act 会双挂窗口出"幽灵鱼"——必须在 withMountLock 内二次复核
@@ -55,8 +65,9 @@ class OverlayWindowController(
     private val onReviewBubbleTap: () -> Unit = {},
     /** 长按菜单内容构建（PetMenuBuilder 在 Service 装配动作后提供） */
     private val menuProvider: () -> LinearLayout = { LinearLayout(context) },
-    /** 触摸手势的宠物业务反应（台词/庆祝/摇摆动画/互动计数/位置保存） */
-    private val touchHooks: PetTouchHooks = PetTouchHooks({}, {}, {}, {}, {}, {}, { _, _ -> }),
+    /** 触摸手势的宠物业务反应（台词裁定/甩远吐槽/庆祝/摇摆动画/互动计数/位置保存） */
+    private val touchHooks: PetTouchHooks =
+        PetTouchHooks({}, {}, {}, {}, {}, {}, { _ -> }, {}, { _, _ -> }),
 ) {
 
     private val density get() = context.resources.displayMetrics.density
@@ -487,8 +498,9 @@ class OverlayWindowController(
 
     // ===== 触摸：拖动 / 单击 / 双击 / 长按（识别与窗口操作在此，业务反应经 touchHooks）=====
 
-    /** 装触摸手势到鱼 ImageView。识别归控制器（winParams 拖动/菜单开合/位置钳制），
-     *  台词/庆祝/摇摆/计数/持久化经 [touchHooks] 打回 Service；PetHub 同包直调 */
+    /** 装触摸手势到鱼 ImageView。识别与窗口操作归控制器（winParams 拖动/菜单开合/
+     *  位置钳制/双击窗口/速度阈值）；开口类业务（单击台词裁定/甩远吐槽/庆祝/计数/
+     *  持久化）经 [touchHooks] 打回 Service，PetHub 仅限无副作用的读态与选词 */
     fun installTouchHandlers(iv: ImageView) {
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
         var dragDownX = 0f
@@ -581,20 +593,10 @@ class OverlayWindowController(
                             touchHooks.celebrate()
                         } else if (!tapGuarded) {
                             lastTapAt = now
-                            // 单击台词延迟过双击窗口再冒，双击就不会先说一句再庆祝。
-                            // 执行时（而非进窗时）查态：进窗到执行隔 360ms 会被竞态骗（spec §4.3）——
-                            // 镜像期单击=进 familiar 对话（D2）；执行时已入 THINKING/SEARCHING 则守卫优先忽略
+                            // 单击台词延迟过双击窗口再冒，双击就不会先说一句再庆祝
+                            // （台词进窗时选好随身携带；执行时的态复查与开口裁定归 Service）
                             val line = PetHub.pickLine("tap")
-                            val r = Runnable {
-                                when (PetHub.state.value.mood) {
-                                    PetHub.Mood.SPEAKING -> PetHub.openChat()
-                                    PetHub.Mood.THINKING, PetHub.Mood.SEARCHING -> Unit
-                                    else -> {
-                                        PetHub.say(line)
-                                        touchHooks.noteTouch()   // 互动计数：守卫态走上方 Unit，不落这里
-                                    }
-                                }
-                            }
+                            val r = Runnable { touchHooks.onSingleTapConfirmed(line) }
                             singleTapPending = r
                             mainHandler.postDelayed(r, 360L)
                         }
@@ -603,14 +605,7 @@ class OverlayWindowController(
                         val vx = dragTracker?.xVelocity ?: 0f
                         val vy = dragTracker?.yVelocity ?: 0f
                         if (abs(vx) > 2500f || abs(vy) > 2500f) {
-                            // 流式态 fling 守卫（四轮 F2）：显式 mood=TURN 不走 say 保持分支，
-                            // 会把流式态踢成 TURN 且无还原点——流式期间甩动忽略，其余维持晕船吐槽
-                            val m = PetHub.state.value.mood
-                            if (m != PetHub.Mood.THINKING && m != PetHub.Mood.SEARCHING &&
-                                m != PetHub.Mood.SPEAKING
-                            ) {
-                                PetHub.say(PetHub.pickLine("fling"), PetHub.Mood.TURN)
-                            }
+                            touchHooks.onFling()   // 甩远吐槽（流式守卫 + TURN 台词裁定归 Service）
                             touchHooks.squashWobble()   // 压扁弹回：纯视觉缩放，不改状态，流式期间也安全
                         }
                         // 先重钳+更新窗口，再按同步后的鱼位置保存（窗口顶=鱼顶），口径一致

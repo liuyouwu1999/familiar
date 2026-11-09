@@ -28,20 +28,18 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
- * 大肥鱼桌宠——全应用唯一一只（重写版）。应用内、桌面、其他应用上面都是这同一个
- * 悬浮窗对象（TYPE_APPLICATION_OVERLAY 小窗常驻）；帧动画全状态、漫画式对话泡、
- * 单击台词/双击撒花/长按菜单、拖动保持抓取偏移、甩动晕船吐槽、闲置 45-90s 冒泡、
- * 3 分钟无互动打盹。
+ * 大肥鱼桌宠——全应用唯一一只（重写版）。应用内、桌面、其他应用上面都是这同一个悬浮窗
+ * （TYPE_APPLICATION_OVERLAY 小窗常驻）；帧动画全状态、漫画式对话泡、单击台词/双击撒花/
+ * 长按菜单、拖动保持抓取偏移、甩动晕船吐槽、闲置 45-90s 冒泡、3 分钟无互动打盹。
  *
- * 生命周期：设置里唯一的「桌宠」开关 = DataStore petEnabled。开（且已授权悬浮窗）→
- * MainActivity 拉起本服务；关（或长按菜单"躲起来"）→ 收窗自杀。后台守卫（P6 任务2）：
- * 退后台默认收窗（detach 摘窗不自杀，服务与状态机照跑、回前台无缝重挂），
- * petShowInBackground=true 才保留旧版跨应用常驻行为。PetHub.connected=false 不出现。
+ * 生命周期：设置里唯一的「桌宠」开关 = DataStore petEnabled，关（或长按菜单"躲起来"）→
+ * 收窗自杀；退后台默认收窗（detach 摘窗不自杀，服务与状态机照跑、回前台无缝重挂），
+ * petShowInBackground=true 才跨应用常驻（P6 任务2）。PetHub.connected=false 不出现。
  *
- * 职责拆分（审计 A4 拆件）：本类只剩生命周期接线、渲染/帧动画、菜单动作与循环壳——
- * 窗口状态机（四套 LayoutParams/挂载互斥/Insets 校准/触摸手势，含 R6 修复）在
- * [OverlayWindowController]；菜单视觉在 [PetMenuBuilder]；闲置冒泡策略（纯 Kotlin
- * 可单测）在 [AmbientScheduler]；复习数据经 [ReviewReminderPort] 注入（不直连 Room DAO）。
+ * 职责拆分（审计 A4 拆件）：本类只剩生命周期接线、渲染/帧动画、菜单动作与循环壳——窗口
+ * 状态机（四套 LayoutParams/挂载互斥/Insets/触摸手势，含 R6 修复）在 [OverlayWindowController]；
+ * 菜单视觉在 [PetMenuBuilder]；闲置冒泡策略在 [AmbientScheduler]（纯 Kotlin 可单测）；
+ * 复习数据经 [ReviewReminderPort] 注入（不直连 Room DAO）。
  */
 class PetOverlayService : Service() {
 
@@ -109,6 +107,26 @@ class PetOverlayService : Service() {
                 startSwing = ::startSwing,
                 stopSwing = ::stopSwing,
                 squashWobble = ::playSquashWobble,
+                onSingleTapConfirmed = { line ->
+                    // 执行时（而非进窗时）查态：进窗到执行隔 360ms 会被竞态骗（spec §4.3）——
+                    // 镜像期单击=进 familiar 对话（D2）；执行时已入 THINKING/SEARCHING 则守卫优先忽略
+                    when (PetHub.state.value.mood) {
+                        PetHub.Mood.SPEAKING -> PetHub.openChat()
+                        PetHub.Mood.THINKING, PetHub.Mood.SEARCHING -> Unit
+                        else -> {
+                            PetHub.say(line)
+                            scope.launch { PetBondStore.noteTouch() }   // 互动计数：守卫态走上方 Unit，不落这里
+                        }
+                    }
+                },
+                onFling = {
+                    // 流式态 fling 守卫（四轮 F2）：显式 mood=TURN 不走 say 保持分支会把流式态踢飞
+                    // 且无还原点——流式期间甩动忽略，其余维持晕船吐槽
+                    val m = PetHub.state.value.mood
+                    if (m != PetHub.Mood.THINKING && m != PetHub.Mood.SEARCHING && m != PetHub.Mood.SPEAKING) {
+                        PetHub.say(PetHub.pickLine("fling"), PetHub.Mood.TURN)
+                    }
+                },
                 savePosition = { nx, ny ->
                     // 旁路 launch 补捕获（审计 R1，任务 1.1）：位置保存失败只告警，不逃逸
                     scope.launch {
@@ -142,9 +160,7 @@ class PetOverlayService : Service() {
                 // 快路径：可见态已挂/不可见态已摘就别进锁（streaming 期状态帧高频）
                 if (visible == controller.isMounted) return@collect
                 controller.withMountLock {
-                    if (visible && !controller.isMounted && !controller.mountFailed &&
-                        repo.petEnabled.first()
-                    ) {
+                    if (visible && !controller.isMounted && !controller.mountFailed && repo.petEnabled.first()) {
                         doAttach(repo.petColor.first())
                     } else if (!visible && controller.isMounted) detach()
                 }
@@ -167,8 +183,8 @@ class PetOverlayService : Service() {
                 }
             }
         }
-        // 桌宠渲染：状态 → 气泡/帧动画/歪头/4 秒归位；顺带兜底挂载：服务活着但窗口没挂时
-        // （STICKY 重启后 connected 才翻 true、或启动竞态），任何一次状态发射都会补上挂载
+        // 桌宠渲染（状态 → 气泡/帧动画/歪头/沉降）+ 兜底挂载：窗口未挂时（STICKY 重启竞态）
+        // 任何一次状态发射都会补挂
         scope.launch {
             PetHub.state.collect { s ->
                 if (!controller.isMounted && s.connected && repo.petEnabled.first()) {
@@ -208,9 +224,8 @@ class PetOverlayService : Service() {
 
     // ===== 生命周期：挂载/摘除（窗口状态机在 OverlayWindowController）=====
 
-    /** 挂载单飞（onStartCommand / 状态收集器兜底共用）：锁内复核开关与挂载态
-     *  （防双挂"幽灵鱼"）；R6：挂载失败（mountFailed）后本实例不再重试——
-     *  服务自杀后 STICKY 重启由新实例再试 */
+    /** 挂载单飞（onStartCommand / 状态收集器兜底共用）：锁内复核开关与挂载态（防双挂）；
+     *  R6：挂载失败（mountFailed）后本实例不再重试，STICKY 重启由新实例再试 */
     private suspend fun mount(petSkinId: String) {
         if (controller.mountFailed || controller.isMounted) return
         controller.withMountLock {
@@ -222,8 +237,7 @@ class PetOverlayService : Service() {
         }
     }
 
-    /** 挂载接线：窗口创建/校准/触摸安装归控制器，皮肤/帧播放器/状态对齐归本服务
-     *  （须在挂载锁内调用） */
+    /** 挂载接线：窗口创建/校准/触摸安装归控制器，皮肤/帧播放器/状态对齐归本服务（须在挂载锁内） */
     private suspend fun doAttach(petSkinId: String) {
         skinId = petSkinId
         refreshSkin()
@@ -284,9 +298,8 @@ class PetOverlayService : Service() {
         } else controller.hideBubble()
         if (s.mood == PetHub.Mood.DONE) scheduler.onSessionSettled()   // 防烦判一计时
         // 沉降分级（spec §3）：4 秒定时只管 DONE/ERROR/互动泡（打盹 Zzz 不归位，等互动唤醒）；
-        // 流式驱动态 THINKING/SEARCHING/SPEAKING 不排 settleJob——由状态迁移驱动沉降（多源
-        // 搜索常 >4s，照稿会在中途被打回 IDLE 自败镜像目标）。排程前先 cancel 旧 job。
-        // 复习泡变体 12s：等用户点泡跳复习，4s 太短来不及点
+        // 流式驱动态 THINKING/SEARCHING/SPEAKING 不排 settleJob（由状态迁移驱动沉降，照稿会
+        // 中途被打回 IDLE 自败镜像目标）；排程前先 cancel 旧 job。复习泡变体 12s（点泡跳复习）
         settleJob?.cancel()
         val streamingDriven = s.mood == PetHub.Mood.THINKING ||
             s.mood == PetHub.Mood.SEARCHING || s.mood == PetHub.Mood.SPEAKING
@@ -298,8 +311,7 @@ class PetOverlayService : Service() {
         }
     }
 
-    /** 皮肤解析 + 预热：onCreate 收集器与挂载都调。get 失败（两源皆失/解析拒载）
-     *  回落内置蓝；蓝也缺失则 currentSkin=null——帧播放器保持现帧（Log.w，绝不 !!） */
+    /** 皮肤解析 + 预热：get 失败回落内置蓝；蓝也缺失则 currentSkin=null——保持现帧（绝不 !!） */
     private fun refreshSkin() {
         currentSkin = PetSkinStore.get(skinId) ?: PetSkinStore.get("blue")
         val skin = currentSkin
@@ -307,9 +319,8 @@ class PetOverlayService : Service() {
         else scope.launch(Dispatchers.IO) { PetSkinStore.warmUp(skin) }
     }
 
-    /** 帧推进：循环则取模，否则播完定住末帧（Handler 换帧，悬浮窗标准做法）。
-     *  帧源为皮肤包位图（P5）；坏图 frameBitmap 返 null 时保持上一帧。开头现扫重解析：
-     *  运行中删皮肤后旧引用仍可解析出帧，必须每次现取（零缓存契约内 Main 线程毫秒级） */
+    /** 帧推进：循环则取模，否则播完定住末帧（Handler 换帧）；坏图保持上一帧。开头现扫
+     *  重解析：删皮肤后旧引用仍可解析出帧，必须每次现取（零缓存契约内 Main 线程毫秒级） */
     private fun restartFramePlayer() {
         currentSkin = PetSkinStore.get(skinId) ?: PetSkinStore.get("blue") ?: currentSkin
         frameTick?.let { mainHandler.removeCallbacks(it) }
@@ -421,8 +432,7 @@ class PetOverlayService : Service() {
     /** 菜单动作装配（审计 A4 拆件：视觉归 PetMenuBuilder，动作/守卫留本服务） */
     private fun buildMenuActions(): PetMenuActions = PetMenuActions(
         openChat = {
-            // 先把 app 拉到前台（进程死时重建任务），同进程导航钩子还在就直跳陪伴对话；
-            // 钩子可能指向已销毁的 NavController，炸了就吞掉
+            // 先把 app 拉到前台（进程死时重建任务）；钩子可能指向已销毁 NavController，炸了吞掉
             startActivity(
                 Intent(this, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -439,8 +449,7 @@ class PetOverlayService : Service() {
         },
         stroke = {
             wake()
-            // 流式态 stroke 守卫（spec §3 三态全含）：显式传 SHY 会把流式态踢飞且无还原点——
-            // 菜单可弹出，该项响应受守卫忽略
+            // 流式态 stroke 守卫（spec §3 三态全含）：显式传 SHY 会把流式态踢飞且无还原点
             val m = PetHub.state.value.mood
             if (m != PetHub.Mood.THINKING && m != PetHub.Mood.SEARCHING && m != PetHub.Mood.SPEAKING) {
                 PetHub.say(PetHub.pickLine("stroke"), PetHub.Mood.SHY)
@@ -460,8 +469,7 @@ class PetOverlayService : Service() {
             ) {
                 // 偷吃 token 表演（32 帧 one-shot，播完自动收束）+ 互动计数（spec §5 互动面）
                 PetHub.perform(PetHub.Mood.TOKEN, PetHub.pickLine("feed"))
-                // 旁路 launch 补捕获（审计 R1，任务 1.1）：计数失败只告警，不逃逸
-                scope.launch {
+                scope.launch {   // 旁路 launch 补捕获（审计 R1）：计数失败只告警，不逃逸
                     try {
                         PetBondStore.noteTouch()
                     } catch (e: CancellationException) {
@@ -495,24 +503,18 @@ class PetOverlayService : Service() {
 
     private fun wake() { lastInteractionAt = System.currentTimeMillis() }
 
-    private fun celebrate() {
-        wake()
-        PetHub.say(PetHub.pickLine("doubleTap"))
-        confettiView?.burst()
-    }
+    private fun celebrate() { wake(); PetHub.say(PetHub.pickLine("doubleTap")); confettiView?.burst() }
 
     // ===== 闲置行为（策略判定在 AmbientScheduler，副作用留本服务）=====
 
     private suspend fun ambientLoop() {
         while (true) {
             delay(scheduler.beatDelayMs())
-            // 防烦联动（spec §3）判一：DONE 后重置 ambient 计时器——会话刚收束的下一拍不开口，
-            // 本次到点作废、重新起算（复位阈值取调度下限，之后还有 60s 气泡闸再兜一层）
+            // 防烦判一（spec §3）：DONE 收束后 45s 内的拍作废重新起算（语义详见 AmbientScheduler）
             if (scheduler.inSettleQuietWindow()) continue
             // 复习拍（spec §6）：到期条目优先于闲聊；2h 静默期在 RoomReviewReminderSource 的
-            // isNudgeable 口径内。门：非 IDLE/有泡不踢（REVIEW 是显式 mood，say 走显式分支不保
-            // 流式态，流式中插话会踢飞且无还原点）；connected/挂窗也在门内——say 对未连接是
-            // no-op 而 markReminded 照写库，不开门会白烧掉 2h 静默期。判一在其上
+            // isNudgeable 口径内。门：非 IDLE/有泡不踢（流式中插话踢飞且无还原点）；connected/
+            // 挂窗也在门内——say 对未连接是 no-op 而 markReminded 照写库，不开门会白烧静默期
             val ps = PetHub.state.value
             val reviewGates = AmbientGates(
                 visible = controller.isMounted,
@@ -534,8 +536,7 @@ class PetOverlayService : Service() {
                     continue   // 本拍不闲聊
                 }
             }
-            // 判二：距上次任意气泡显示 <60s 不发——互动泡/镜像段/收束庆祝后不紧跟着闲聊
-            // （查询可能跨挂起点，状态在此重读一次再裁定）
+            // 判二：距上次气泡 <60s 不发；查询跨挂起点，状态在此重读一次再裁定
             val s = PetHub.state.value
             val chatGates = AmbientGates(
                 visible = controller.isMounted,
@@ -544,14 +545,13 @@ class PetOverlayService : Service() {
                 bubbleShowing = s.bubble != null,
             )
             if (scheduler.shouldAmbient(chatGates)) {
-                // 久别问候优先（spec §5）：pending 由连接侧 maybeGreet 置位、markGreeted 已保证
-                // 当日仅一次，此处只管消费
+                // 久别问候优先（spec §5）：pending 由连接侧置位并保证当日仅一次，此处只管消费
                 if (PetHub.bondGreetingPending) {
                     PetHub.bondGreetingPending = false
                     PetHub.say(PetHub.pickLine("greeting"))
                 } else {
-                    // 空闲微动作（P6 任务4b）：环境泡本身就是 45-90s 一拍，这里再 1/8 抽中才无声
-                    // 演一下（哼歌/晃尾巴），点缀不抢戏；皮肤没实现（橘版未跟量）就照旧说话
+                    // 空闲微动作（P6 任务4b）：环境拍内再 1/8 抽中才无声演一下，点缀不抢戏；
+                    // 皮肤没实现（橘版未跟量）就照旧说话
                     val micro = listOf(PetHub.Mood.HUM, PetHub.Mood.TAIL)
                         .filter { currentSkin?.clips?.containsKey(it) == true }
                     if (micro.isNotEmpty() && Random.nextInt(8) == 0) {
