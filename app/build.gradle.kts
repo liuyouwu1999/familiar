@@ -18,12 +18,12 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "dev.liuyouwu.familiar"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "dev.liuyouwu.familiar"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 5
         versionName = "1.0.0.0"
         // 资源收缩（审计 P6）：仅保留中/英，第三方库携带的其余 locale 资源不打包

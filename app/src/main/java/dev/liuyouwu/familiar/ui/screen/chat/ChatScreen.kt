@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -666,7 +668,15 @@ fun ChatScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        // targetSdk 35 强制 edge-to-edge：adjustResize 不再缩窗，键盘以 ime inset 派发
+        // （Scaffold contentWindowInsets 只含 systemBars）——consumeWindowInsets 把已吃掉的
+        // systemBars 底部 inset 从 ime 里扣掉，imePadding 只补键盘真高，输入栏不被键盘遮挡
+        Column(
+            modifier = Modifier.fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
+        ) {
             if (streamingState.isStreaming) {
                 // 生成中指示行：会话工具进度（"🔍 正在搜索：xxx"，新引擎桥）优先，
                 // 旧链搜索文案（searchStatus）次之，默认"…生成中"

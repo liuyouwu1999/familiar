@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -80,6 +81,9 @@ fun ReviewScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // targetSdk 35 强制 edge-to-edge 后 ime inset 生效：先扣掉 padding 里已吃的
+                // systemBars 底部 inset，键盘打开时输入行贴键盘顶不悬空
+                .consumeWindowInsets(padding)
                 .imePadding(),
         ) {
             LazyColumn(
