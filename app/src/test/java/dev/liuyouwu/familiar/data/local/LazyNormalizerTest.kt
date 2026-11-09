@@ -155,4 +155,30 @@ class LazyNormalizerTest {
         val written = row.copy(reasoning = out.reasoning, blocks = out.blocks, content = out.content)
         assertFalse(LazyNormalizer.needsNormalize(written))
     }
+
+    // -------------------------------- 轻量投影行重载（审计 P1-4 聊天读路径）：
+    // 判定/拆分与 Entity 版本同语义（blocks/role/content 三列）
+
+    private fun legacyLightRow(content: String, blocks: String? = null) =
+        dev.liuyouwu.familiar.data.local.dao.MessageLightRow(
+            id = 1L, conversationId = 7L, role = "assistant", content = content, blocks = blocks, timestamp = 1L,
+        )
+
+    @Test
+    fun `light row overload - gate and split match entity semantics`() {
+        val row = legacyLightRow("<think>推演</think>正文")
+        assertTrue(LazyNormalizer.needsNormalize(row))
+        val out = LazyNormalizer.normalize(row)
+        assertEquals("推演", out.reasoning)
+        assertEquals("正文", out.content)
+        assertEquals(
+            listOf(ContentBlock.Thinking("推演"), ContentBlock.Text("正文")),
+            BlockCodec.fromJson(out.blocks!!)
+        )
+        // 回写模拟：blocks 非空后幂等跳过
+        assertFalse(LazyNormalizer.needsNormalize(row.copy(blocks = out.blocks)))
+        assertFalse(LazyNormalizer.needsNormalize(legacyLightRow("<think>推演</think>正文", blocks = "[]")))
+        assertFalse(LazyNormalizer.needsNormalize(legacyLightRow("普通回复")))
+        assertFalse(LazyNormalizer.needsNormalize(legacyLightRow("<think>x</think>").copy(role = "user")))
+    }
 }

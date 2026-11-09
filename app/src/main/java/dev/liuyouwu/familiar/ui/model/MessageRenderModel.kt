@@ -31,6 +31,13 @@ data class ToolBlock(
 data class AttachmentSummary(val fileName: String?, val videoFrameCount: Int?)
 
 /**
+ * 附件惰性加载产物（审计 P1-4）：轻量读路径的 hasAttachment 行在渲染位按需取回的
+ * 附件真值——图片 base64 列表 + 附件摘要列表（语义同 [UiMessage.images]/
+ * [UiMessage.attachments]）。放 ui.model：气泡侧经回调拿此类型，不触碰 data.local。
+ */
+data class AttachmentPayload(val images: List<String>, val summaries: List<AttachmentSummary>)
+
+/**
  * MessageBubble 的渲染模型（Agent 内核 P3 Task 8）：把 [AgentMessage] 的块结构 /
  * [MessageEntity] 的旧列结构统一折成"思考 + 文本块 + 工具卡片"三段渲染决策。
  * 纯 Kotlin、无 Compose 依赖——JVM 可测（MessageRenderModelTest）。
@@ -56,6 +63,10 @@ data class UiMessage(
     /** 首图兼容位（entity 旧行单图列/既有构造点）；气泡渲染以 [images] 为准 */
     val imageBase64: String? = null,
     val attachments: List<AttachmentSummary> = emptyList(),
+    /** 附件惰性标记（审计 P1-4）：轻量读路径的 hasAttachment 行由 VM 层置空附件
+     *  （images/attachments 恒空）并置 true；渲染位经 onLoadAttachment 回调按需
+     *  取 [AttachmentPayload] 真值。默认 false——全量构造点（from/fromEntity）不变 */
+    val hasLazyAttachment: Boolean = false,
     val segments: List<String>? = null,
     val meta: MessageMeta = MessageMeta.NONE,
     val replyPreview: String? = null,

@@ -7,6 +7,8 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.liuyouwu.familiar.data.local.AppDatabase
+import dev.liuyouwu.familiar.data.local.MessageRowMapper
+import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
 import dev.liuyouwu.familiar.data.local.entity.ChatRoomParticipantEntity
 import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
 import dev.liuyouwu.familiar.data.local.entity.MessageEntity
@@ -606,21 +608,109 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     }
 
+    // ===== 聊天页消息读路径（审计 P1-4：单权威流 + 向上分页）=====
+
+    /** 首屏窗口（与 [MessagePager.limit] 初始值同源）：进入会话只取最新 200 条 */
+    private val initialWindow = 200
+
+    /** 每会话分页状态（VM 单实例跨会话，per-conversation 隔离；量级 = 会话数，可忽略） */
+    private class MessagePager {
+        /** 轻量流查询窗口：滚顶加载单调提升（flatMapLatest 以新 limit 重查询） */
+        val limit = MutableStateFlow(200)
+
+        /** getMessagesBefore 一次性取回的旧行（升序缓存）：重查询在途时的即时填缝，
+         *  与轻量流窗口按 id 去重归并 */
+        val prepend = MutableStateFlow<List<dev.liuyouwu.familiar.data.local.dao.MessageLightRow>>(emptyList())
+
+        /** 在飞防重：滚顶高频触发只放一个查询进管道 */
+        val loading = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** 已探底（getMessagesBefore 空返回）：不再触库 */
+        var exhausted = false
+
+        /** 当前已加载窗口的最早行 id（流内更新）——keyset 分页锚 */
+        var earliestId: Long? = null
+    }
+
+    private val messagePagers = java.util.concurrent.ConcurrentHashMap<Long, MessagePager>()
+
+    private fun pagerFor(conversationId: Long): MessagePager =
+        messagePagers.getOrPut(conversationId) { MessagePager() }
+
     /**
-     * 消息渲染流（Agent 内核 P3 T9）：[ChatRepository.getAgentMessages]（块权威列 +
-     * 读时规范化——聊天室旧链写行同样经 LazyNormalizer/MessageRowMapper 读出）×
-     * 行 segments 列 → [UiMessage] 列表。列表级工具配对见 [uiMessagesOf]。
+     * 消息渲染流（审计 P1-4 单权威流）：[ChatRepository.getMessagesLight]（轻量投影 +
+     * 读时规范化）× prepend 填缝缓存 → id 归并去重 → [UiMessage] 列表。
+     * 旧双流 combine（getAgentMessages × getMessagesForConversation，两条全量实体流，
+     * 每次失效把整个会话的 base64 拉进内存）由此消灭；segments 列已并入轻量投影，
+     * 上游 2 拆除。附件不在流内——hasAttachment 行由 VM 置空附件并打
+     * [UiMessage.hasLazyAttachment] 标记（见 [uiMessagesFromLightRows]），
+     * 渲染位按需取（[loadAttachmentPayload]）。列表级工具配对见 [uiMessagesOf]。
      */
-    fun getUiMessages(conversationId: Long): Flow<List<UiMessage>> =
-        combine(
-            chatRepository.getAgentMessages(conversationId),
-            chatRepository.getMessagesForConversation(conversationId),
-        ) { agentMessages, entities ->
-            uiMessagesOf(
-                agentMessages,
-                entities.associate { it.id.toString() to MessageRenderModel.parseSegments(it.segments) },
-            )
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun getUiMessages(conversationId: Long): Flow<List<UiMessage>> {
+        val pager = pagerFor(conversationId)
+        return combine(
+            pager.limit.flatMapLatest { limit ->
+                chatRepository.getMessagesLight(conversationId, maxOf(initialWindow, limit))
+            },
+            pager.prepend,
+        ) { lightRows, prepended ->
+            // 填缝去重：prepend 旧行与轻量窗口行按 id 归并升序（id 自增单调，
+            // 与 (timestamp,id) 序一致；getMessagesBefore 的 keyset 锚同按 id）
+            (prepended + lightRows).distinctBy { it.id }.sortedBy { it.id }
+        }.map { rows ->
+            pager.earliestId = rows.minOfOrNull { it.id }   // keyset 锚随窗口更新
+            uiMessagesFromLightRows(rows)
         }.flowOn(Dispatchers.Default)   // segments JSON 解析 + 列表配对不占主线程
+    }
+
+    /**
+     * 滚顶加载（ChatScreen firstVisibleItemIndex < 3 触发）：keyset 取更早一页
+     * （[ChatRepository.getMessagesBefore]）即时 prepend 填缝，同时提升轻量流
+     * 查询窗口（重查询覆盖同一范围，去重归并后无缝）。空返回即探底，后续触发直通。
+     */
+    fun loadMoreBefore(conversationId: Long) {
+        val pager = pagerFor(conversationId)
+        if (pager.exhausted || !pager.loading.compareAndSet(false, true)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val earliest = pager.earliestId ?: return@launch   // 首屏未回（空会话/首帧未达）
+                val older = chatRepository.getMessagesBefore(conversationId, earliest, initialWindow)
+                if (older.isEmpty()) {
+                    pager.exhausted = true
+                    return@launch
+                }
+                pager.prepend.value = pager.prepend.value + older
+                pager.limit.value = pager.limit.value + initialWindow
+            } finally {
+                pager.loading.set(false)
+            }
+        }
+    }
+
+    /**
+     * 附件惰性桥（审计 P1-4）：渲染位回调 → repo LruCache 附件行 → ui 层载荷
+     * （图片列表 + 摘要列表）。多图 user 组按组整取（repo 侧），此处仅折算——
+     * 标签语义与 MessageRenderModel 旧行路径一致：fileName 出文件标签（同帧数
+     * 并显），纯视频帧出「🎞 N frames」。
+     */
+    suspend fun loadAttachmentPayload(messageId: Long): dev.liuyouwu.familiar.ui.model.AttachmentPayload? {
+        val rows = chatRepository.loadAttachment(messageId)
+        if (rows.isEmpty()) return null
+        return dev.liuyouwu.familiar.ui.model.AttachmentPayload(
+            images = rows.mapNotNull { it.imageBase64 },
+            summaries = rows.mapNotNull { row ->
+                val frameCount = row.videoFrames?.let {
+                    runCatching { gson.fromJson(it, Array<String>::class.java)?.size }.getOrNull()
+                }
+                when {
+                    row.fileName != null -> dev.liuyouwu.familiar.ui.model.AttachmentSummary(row.fileName, frameCount)
+                    frameCount != null -> dev.liuyouwu.familiar.ui.model.AttachmentSummary(null, frameCount)
+                    else -> null    // 纯图行不产标签（图片走 images 通道，旧渲染同口径）
+                }
+            },
+        )
+    }
 
     fun loadConversationPrompt(conversationId: Long) {
         viewModelScope.launch {
@@ -1063,4 +1153,47 @@ internal fun uiMessagesOf(
         if (message.role == Role.TOOL_RESULT) null   // 配对进卡片，不成独立泡
         else MessageRenderModel.from(message, segmentsById[message.id], resultsAfter[i] ?: emptyList())
     }.filterNotNull()
+}
+
+/**
+ * 轻量投影行 → [UiMessage] 渲染列表（审计 P1-4，纯函数——JVM 可测）。
+ * MessageLightRow→UiMessage 的转换收口在 VM 层（ui 包零 data.local 依赖）：
+ * 行折回实体（附件列置 null，复用 [MessageRowMapper.fromRows] 的分组/合并/工具
+ * 配对）→ [uiMessagesOf]（segments 并入）→ [hasAttachmentByMessageId] 命中的行
+ * 附件置空 + 打 [UiMessage.hasLazyAttachment] 标记，渲染位按需补载。
+ */
+internal fun uiMessagesFromLightRows(rows: List<MessageLightRow>): List<UiMessage> {
+    val segmentsById = rows.associate { it.id.toString() to MessageRenderModel.parseSegments(it.segments) }
+    val hasAtt = hasAttachmentByMessageId(rows)
+    val messages = MessageRowMapper.fromRows(rows.map(MessageLightRow::toEntity))
+    return uiMessagesOf(messages, segmentsById).map { ui ->
+        val rowId = ui.id.toLongOrNull()
+        if (rowId != null && hasAtt[rowId] == true) ui.copy(hasLazyAttachment = true) else ui
+    }
+}
+
+/**
+ * 轻量行 → 消息 id 的附件存在性归并（纯函数）：分组规则与 [MessageRowMapper.fromRows]
+ * 一致（连续同 turnId 段；turnId=NULL 单行自成组）——多图 user 组（同 user-turnId
+ * N 行）合并为单条消息（id=首行 id），组内 any hasAttachment 归到首行 id 上，
+ * 防止「首行无图、后续行有图」的合并组漏标。
+ */
+internal fun hasAttachmentByMessageId(rows: List<MessageLightRow>): Map<Long, Boolean> {
+    val out = HashMap<Long, Boolean>(rows.size)
+    var i = 0
+    while (i < rows.size) {
+        val turnId = rows[i].turnId
+        var j = i + 1
+        if (turnId != null) {
+            while (j < rows.size && rows[j].turnId == turnId) j++
+        }
+        val group = rows.subList(i, j)
+        if (group.size > 1 && group.all { it.role == "user" }) {
+            out[group.first().id] = group.any { it.hasAttachment }
+        } else {
+            group.forEach { out[it.id] = it.hasAttachment }
+        }
+        i = j
+    }
+    return out
 }

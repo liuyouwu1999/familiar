@@ -230,6 +230,9 @@ fun MessageBubble(
     onContinue: (() -> Unit)? = null,
     onReply: ((UiMessage) -> Unit)? = null,
     onRetryWithModel: (() -> Unit)? = null,
+    // 附件惰性加载（审计 P1-4）：hasLazyAttachment 行经此回调按需取附件真值
+    // （VM 层折算 AttachmentPayload——ui 包不触碰 data.local）。null = 调用方无惰性路径
+    onLoadAttachment: (suspend (String) -> dev.liuyouwu.familiar.ui.model.AttachmentPayload?)? = null,
     isLastAssistant: Boolean = false,
     avatarRes: Int? = null,
     // 皮肤位图头像（P5）：非空时优先于 avatarRes 渲染（familiar 头像走此通道）
@@ -482,13 +485,35 @@ fun MessageBubble(
                         Spacer(modifier = Modifier.size(8.dp))
                     }
 
+                    // 附件惰性加载（审计 P1-4）：轻量读路径的 hasAttachment 行在 VM 层
+                    // 附件置空 + 打标，此处经 onLoadAttachment 按需取真值（repo LruCache
+                    // 8 条，滚回可见不重复触库）。加载中沿用图片解码同款占位框。
+                    val lazyAttachments by androidx.compose.runtime.produceState<
+                        dev.liuyouwu.familiar.ui.model.AttachmentPayload?
+                        >(initialValue = null, key1 = message.id) {
+                        if (message.hasLazyAttachment) value = onLoadAttachment?.invoke(message.id)
+                    }
+                    val images = if (message.hasLazyAttachment) lazyAttachments?.images.orEmpty()
+                        else message.images.ifEmpty { listOfNotNull(message.imageBase64) }
+                    val attachmentSummaries = if (message.hasLazyAttachment) lazyAttachments?.summaries.orEmpty()
+                        else message.attachments
+                    if (message.hasLazyAttachment && lazyAttachments == null && onLoadAttachment != null) {
+                        // 附件在途占位（与下方图片解码占位同形）
+                        Box(
+                            modifier = Modifier
+                                .size(200.dp)
+                                .background(Color.White.copy(alpha = 0.1f))
+                                .border(1.dp, if (isUser) Color.White.copy(alpha = 0.5f) else WoodBorder)
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                    }
+
                     // Image attachments：base64 后台解码落缓存文件，Coil 加载文件。
                     // （曾直接喂 data URI：大图在部分机型上 Coil 解码失败，气泡只剩蓝底；
                     //  文件路径是 Coil 最稳的加载通道，且按消息 id 缓存不重复解码）
                     // P5 清理批（多图首图修复）：内核附件可带多张 Image——旧渲染
                     // firstOrNull() 只出首图、其余静默丢；改 images 列表全量渲染
                     // （单图形态不变；旧列 imageBase64 兜底兼容既有构造点）
-                    val images = message.images.ifEmpty { listOfNotNull(message.imageBase64) }
                     images.forEachIndexed { imgIndex, imageB64 ->
                         val context = androidx.compose.ui.platform.LocalContext.current
                         val imageFile by androidx.compose.runtime.produceState<java.io.File?>(
@@ -528,7 +553,7 @@ fun MessageBubble(
                     }
 
                     // File attachment（渲染模型附件摘要：文件名 + 视频帧数）
-                    message.attachments.forEach { attachment ->
+                    attachmentSummaries.forEach { attachment ->
                         val attachmentLabel = if (attachment.videoFrameCount != null) {
                             "\uD83C\uDFA5 ${attachment.fileName ?: "视频"} (${attachment.videoFrameCount} frames)"
                         } else {

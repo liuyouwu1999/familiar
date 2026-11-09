@@ -15,7 +15,10 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("conversationId"), Index("timestamp")]
+    // conversationId+timestamp 复合索引（审计 P7）：会话内消息读路径（轻量投影/分页/
+    // 全量升序读）与备份逐会话查询都按 (conversationId, timestamp) 过滤排序，单列
+    // conversationId 索引命中后仍需对组内行按 timestamp 排序——复合索引消除该排序。
+    indices = [Index("conversationId"), Index("timestamp"), Index("conversationId", "timestamp")]
 )
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true)

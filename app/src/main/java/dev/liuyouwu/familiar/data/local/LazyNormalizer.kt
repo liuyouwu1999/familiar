@@ -3,6 +3,7 @@ package dev.liuyouwu.familiar.data.local
 import dev.liuyouwu.familiar.core.llm.model.BlockCodec
 import dev.liuyouwu.familiar.core.llm.model.ContentBlock
 import dev.liuyouwu.familiar.core.llm.think.ThinkSplitter
+import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
 import dev.liuyouwu.familiar.data.local.entity.MessageEntity
 
 /**
@@ -36,19 +37,29 @@ object LazyNormalizer {
     fun needsNormalize(row: MessageEntity): Boolean =
         row.blocks == null && row.role == ROLE_ASSISTANT && containsThinkMarker(row.content)
 
-    fun normalize(row: MessageEntity): NormalizedRow {
+    fun normalize(row: MessageEntity): NormalizedRow = normalizeContent(row.content)
+
+    // ----- 轻量投影行重载（审计 P1-4 消息读路径）：判定/拆分只需 blocks/role/content
+    // 三列，轻量行同语义适用；上方 Entity 版本保留，供 RoomMessageStore.list 路径用 -----
+
+    fun needsNormalize(row: MessageLightRow): Boolean =
+        row.blocks == null && row.role == ROLE_ASSISTANT && containsThinkMarker(row.content)
+
+    fun normalize(row: MessageLightRow): NormalizedRow = normalizeContent(row.content)
+
+    private fun normalizeContent(content: String): NormalizedRow {
         val splitter = ThinkSplitter()
-        val segments = splitter.feed(row.content) + splitter.flush()
+        val segments = splitter.feed(content) + splitter.flush()
         val reasoning = segments.filter { it.isReasoning }.joinToString("\n") { it.text }.ifEmpty { null }
-        val content = segments.filter { !it.isReasoning }.joinToString("\n") { it.text }
+        val textContent = segments.filter { !it.isReasoning }.joinToString("\n") { it.text }
         val blocks = buildList {
             if (reasoning != null) add(ContentBlock.Thinking(reasoning))
-            if (content.isNotEmpty()) add(ContentBlock.Text(content))
+            if (textContent.isNotEmpty()) add(ContentBlock.Text(textContent))
         }
         return NormalizedRow(
             reasoning = reasoning,
             blocks = BlockCodec.toJson(blocks),
-            content = content,
+            content = textContent,
         )
     }
 

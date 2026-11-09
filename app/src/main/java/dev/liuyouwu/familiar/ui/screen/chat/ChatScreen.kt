@@ -425,6 +425,17 @@ fun ChatScreen(
     var autoScroll by remember { mutableStateOf(true) }
     var wasLoading by remember { mutableStateOf(false) }
 
+    // 滚顶分页（审计 P1-4）：首可见项贴近列表头时触发 keyset 向上加载（loadMoreBefore
+    // 内部防重/探底守卫，重复触发零副作用）；窗口不足 200 条的会话首次触发即探底
+    val nearTop by remember { derivedStateOf { listState.firstVisibleItemIndex < 3 } }
+    LaunchedEffect(conversationId) {
+        snapshotFlow { nearTop }.collect { if (it) viewModel.loadMoreBefore(conversationId) }
+    }
+
+    // 附件惰性加载桥（审计 P1-4）：气泡渲染位回调 → VM → repo（LruCache 8 条）
+    val loadAttachmentById: suspend (String) -> dev.liuyouwu.familiar.ui.model.AttachmentPayload? =
+        remember { { id -> id.toLongOrNull()?.let { viewModel.loadAttachmentPayload(it) } } }
+
     val isNearBottom by remember {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
@@ -953,6 +964,7 @@ fun ChatScreen(
                                     isLastAssistant = isLastAssistant && isFinalSegment,
                                     avatarBitmap = msgAvatarBitmap,
                                     avatarLetter = msgAvatarLetter,
+                                    onLoadAttachment = loadAttachmentById,
                                     // 占位色只在位图 null 时顶上（位图成功时 accent 不得透出立绘透明边，复审 P1-B）
                                     avatarColor = msgAvatarColor?.takeIf { msgAvatarBitmap == null } ?:
                                         message.senderColorHex?.let {
@@ -995,6 +1007,7 @@ fun ChatScreen(
                             isLastAssistant = isLastAssistant,
                                     avatarBitmap = msgAvatarBitmap,
                                     avatarLetter = msgAvatarLetter,
+                                    onLoadAttachment = loadAttachmentById,
                                     // 占位色只在位图 null 时顶上（位图成功时 accent 不得透出立绘透明边，复审 P1-B）
                                     avatarColor = msgAvatarColor?.takeIf { msgAvatarBitmap == null } ?:
                                         message.senderColorHex?.let {

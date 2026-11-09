@@ -68,9 +68,47 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE conversationId = :conversationId AND role = 'assistant' AND content = ''")
     suspend fun deleteEmptyAssistantPlaceholders(conversationId: Long)
 
-    // Pagination support
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp DESC, id DESC LIMIT :limit OFFSET :offset")
-    suspend fun getMessagesPaged(conversationId: Long, limit: Int, offset: Int): List<MessageEntity>
+    // ===== 聊天页轻量读路径（审计 P1-4）=====
+
+    /** 会话内最新 [limit] 条消息的轻量投影流（内层倒序取尾、外层恢复升序）。
+     *  列清单刻意排除 imageBase64/fileContent/videoFrames 三个大字段（附件经
+     *  [getAttachment] 惰性取），hasAttachment 为 SQL 显式布尔——图片行 fileName
+     *  恒 null，附件存在性不能靠 fileName 判定。 */
+    @Query(
+        "SELECT * FROM (SELECT id, conversationId, role, content, fileName, timestamp, " +
+            "senderModel, senderDisplayName, senderColorHex, replyToMessageId, replyToContent, " +
+            "replyToRole, promptTokens, completionTokens, cachedTokens, segments, reasoning, " +
+            "blocks, toolMeta, turnId, " +
+            "(imageBase64 IS NOT NULL OR fileName IS NOT NULL OR videoFrames IS NOT NULL) AS hasAttachment " +
+            "FROM messages WHERE conversationId = :conversationId " +
+            "ORDER BY timestamp DESC, id DESC LIMIT :limit) ORDER BY timestamp ASC, id ASC"
+    )
+    fun getMessagesLight(conversationId: Long, limit: Int): Flow<List<MessageLightRow>>
+
+    /** keyset 向上分页：id 序严格小于 [beforeId] 的最新 [limit] 条轻量行（id 倒序，
+     *  调用方反转回升序）。id 自增单调，作 keyset 锚比 (timestamp,id) 稳定 */
+    @Query(
+        "SELECT id, conversationId, role, content, fileName, timestamp, " +
+            "senderModel, senderDisplayName, senderColorHex, replyToMessageId, replyToContent, " +
+            "replyToRole, promptTokens, completionTokens, cachedTokens, segments, reasoning, " +
+            "blocks, toolMeta, turnId, " +
+            "(imageBase64 IS NOT NULL OR fileName IS NOT NULL OR videoFrames IS NOT NULL) AS hasAttachment " +
+            "FROM messages WHERE conversationId = :conversationId AND id < :beforeId " +
+            "ORDER BY id DESC LIMIT :limit"
+    )
+    suspend fun getMessagesBefore(conversationId: Long, beforeId: Long, limit: Int): List<MessageLightRow>
+
+    /** 单行附件按需取（审计 P1-4 附件惰性）：聊天页滚动到可见时才把 base64 拉进内存 */
+    @Query("SELECT id, imageBase64, fileName, fileContent, videoFrames FROM messages WHERE id = :id")
+    suspend fun getAttachment(id: Long): MessageAttachmentRow?
+
+    /** 同 user-turnId 扇出组（多图 user 1 消息 = N 行）的全部附件行：合并组按组取，
+     *  单查 [getAttachment]（首行 id）只能拿到首图——多图首图回归即由此防住 */
+    @Query(
+        "SELECT id, imageBase64, fileName, fileContent, videoFrames FROM messages " +
+            "WHERE conversationId = :conversationId AND turnId = :turnId ORDER BY id ASC"
+    )
+    suspend fun getAttachmentsForTurn(conversationId: Long, turnId: String): List<MessageAttachmentRow>
 
     // ===== 跨会话消息搜索 =====
 
@@ -191,4 +229,71 @@ data class MessageExportRow(
     val promptTokens: Int?,
     val completionTokens: Int?,
     val cachedTokens: Int?
+)
+
+/**
+ * 聊天页轻量投影行（审计 P1-4）：[MessageEntity] 全列减 imageBase64/fileContent/
+ * videoFrames 三个大字段，另加 SQL 显式布尔 [hasAttachment]（附件存在性判定不能
+ * 落在 fileName 上——图片行 fileName 恒 null）。聊天读路径（气泡渲染所需的结构列
+ * 全在）经此投影，附件由 [MessageDao.getAttachment] 按需补载。
+ */
+data class MessageLightRow(
+    val id: Long,
+    val conversationId: Long,
+    val role: String,
+    val content: String,
+    val fileName: String? = null,
+    val timestamp: Long,
+    val senderModel: String? = null,
+    val senderDisplayName: String? = null,
+    val senderColorHex: String? = null,
+    val replyToMessageId: Long? = null,
+    val replyToContent: String? = null,
+    val replyToRole: String? = null,
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null,
+    val cachedTokens: Int? = null,
+    val segments: String? = null,
+    val reasoning: String? = null,
+    val blocks: String? = null,
+    val toolMeta: String? = null,
+    val turnId: String? = null,
+    val hasAttachment: Boolean = false,
+) {
+    /** 折回全列实体（三个附件列置 null）：复用 [MessageRowMapper.fromRows] 的
+     *  分组/合并/工具配对逻辑，不另写一套行映射 */
+    fun toEntity(): MessageEntity = MessageEntity(
+        id = id,
+        conversationId = conversationId,
+        role = role,
+        content = content,
+        imageBase64 = null,
+        fileName = fileName,
+        fileContent = null,
+        videoFrames = null,
+        timestamp = timestamp,
+        senderModel = senderModel,
+        senderDisplayName = senderDisplayName,
+        senderColorHex = senderColorHex,
+        replyToMessageId = replyToMessageId,
+        replyToContent = replyToContent,
+        replyToRole = replyToRole,
+        promptTokens = promptTokens,
+        completionTokens = completionTokens,
+        cachedTokens = cachedTokens,
+        segments = segments,
+        reasoning = reasoning,
+        blocks = blocks,
+        toolMeta = toolMeta,
+        turnId = turnId,
+    )
+}
+
+/** 单行附件载荷（审计 P1-4 附件惰性）：轻量投影行按需补载的附件列 */
+data class MessageAttachmentRow(
+    val id: Long,
+    val imageBase64: String?,
+    val fileName: String?,
+    val fileContent: String?,
+    val videoFrames: String?
 )

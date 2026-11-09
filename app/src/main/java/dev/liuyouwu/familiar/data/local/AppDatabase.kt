@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
         PersonaPresetEntity::class,
         LearningProfileEntryEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -336,6 +336,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v18：messages 复合索引 (conversationId, timestamp)（审计 P7）——会话内消息
+        // 读路径统一按该序过滤/排序。索引名与 Room 由 @Entity indices 自动生成的
+        // 命名一致（index_表名_列1_列2），runMigrationsAndValidate 借此对齐 schema。
+        internal val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_messages_conversationId_timestamp` ON `messages` (`conversationId`, `timestamp`)"
+                )
+            }
+        }
+
         /**
          * MIGRATION_15_16 的类型反推循环（纯函数，供 [Migration15_16LogicTest] 单测）：
          * 每行 (id, tutorConfig, isChatRoom) 经 [TypeInferer.infer] 六序判定得 skillId。
@@ -360,7 +371,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                         MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17
+                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
+                        MIGRATION_17_18
                     )
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

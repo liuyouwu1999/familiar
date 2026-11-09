@@ -5,6 +5,8 @@ import dev.liuyouwu.familiar.data.local.LazyNormalizer
 import dev.liuyouwu.familiar.data.local.MessageRowMapper
 import dev.liuyouwu.familiar.data.local.dao.ConversationDao
 import dev.liuyouwu.familiar.data.local.dao.MessageDao
+import dev.liuyouwu.familiar.data.local.dao.MessageAttachmentRow
+import dev.liuyouwu.familiar.data.local.dao.MessageLightRow
 import dev.liuyouwu.familiar.data.local.dao.MessageSearchRow
 import dev.liuyouwu.familiar.data.local.dao.PromptTemplateDao
 import dev.liuyouwu.familiar.data.local.entity.ConversationEntity
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class ChatRepository(
     private val conversationDao: ConversationDao,
@@ -137,9 +140,64 @@ class ChatRepository(
         messageDao.deleteEmptyAssistantPlaceholders(conversationId)
     }
 
-    // Pagination support
-    suspend fun getMessagesPaged(conversationId: Long, limit: Int, offset: Int): List<MessageEntity> {
-        return messageDao.getMessagesPaged(conversationId, limit, offset).reversed()
+    // ===== 聊天页轻量读路径（审计 P1-4）=====
+
+    /**
+     * 聊天页单权威消息流：会话内最新 [limit] 条的轻量投影（无附件大字段），在读侧
+     * 内联 [LazyNormalizer]（同 [getAgentMessages] 语义：旧行 think 前缀拆块并回写
+     * content/reasoning/blocks 三列，幂等）。**这是 UI 渲染唯一上游**——旧的双流
+     * combine（全量实体流 × segments 流）由此消灭；请求历史/备份/导出仍走全量源，
+     * 互不影响。
+     */
+    fun getMessagesLight(conversationId: Long, limit: Int): Flow<List<MessageLightRow>> =
+        messageDao.getMessagesLight(conversationId, limit)
+            .map { rows -> normalizeLightRows(rows) }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
+
+    /** keyset 向上分页（滚顶加载）：id < [beforeId] 的最新 [limit] 条，升序返回。
+     *  读时规范化同 [getMessagesLight]（prepend 行与流内行同语义）。 */
+    suspend fun getMessagesBefore(conversationId: Long, beforeId: Long, limit: Int): List<MessageLightRow> =
+        normalizeLightRows(messageDao.getMessagesBefore(conversationId, beforeId, limit).asReversed())
+
+    private suspend fun normalizeLightRows(rows: List<MessageLightRow>): List<MessageLightRow> =
+        rows.map { row ->
+            if (LazyNormalizer.needsNormalize(row)) {
+                val normalized = LazyNormalizer.normalize(row)
+                // blocks 非空是 normalize 的产出契约（BlockCodec.toJson），!! 仅为可空声明
+                messageDao.updateBlocks(row.id, normalized.content, normalized.reasoning, normalized.blocks!!)
+                row.copy(content = normalized.content, reasoning = normalized.reasoning, blocks = normalized.blocks)
+            } else {
+                row
+            }
+        }
+
+    /** 附件惰性加载（审计 P1-4）：消息 id → 该消息全部附件行（多图 user 组按
+     *  user-turnId 整组取，防合并组只出首图）。LruCache 8 条：气泡滚回可见时
+     *  不再重复触库。lazy 装配——纯 JVM 单测构造本类不触 android.util。
+     *  返回空列表 = 行已删/无附件。 */
+    private val messageLruCache by lazy { android.util.LruCache<Long, List<MessageAttachmentRow>>(8) }
+
+    suspend fun loadAttachment(messageId: Long): List<MessageAttachmentRow> {
+        messageLruCache.get(messageId)?.let { return it }
+        val rows = withContext(Dispatchers.IO) {
+            val head = messageDao.getMessageById(messageId) ?: return@withContext emptyList()
+            if (head.role == "user" && head.turnId != null) {
+                messageDao.getAttachmentsForTurn(head.conversationId, head.turnId)
+            } else {
+                listOf(
+                    MessageAttachmentRow(
+                        id = head.id,
+                        imageBase64 = head.imageBase64,
+                        fileName = head.fileName,
+                        fileContent = head.fileContent,
+                        videoFrames = head.videoFrames,
+                    )
+                )
+            }
+        }
+        if (rows.isNotEmpty()) messageLruCache.put(messageId, rows)
+        return rows
     }
 
     suspend fun getMessageCount(conversationId: Long): Int {
