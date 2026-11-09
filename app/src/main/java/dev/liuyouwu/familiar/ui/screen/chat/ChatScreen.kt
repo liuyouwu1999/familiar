@@ -124,6 +124,7 @@ import dev.liuyouwu.familiar.ui.theme.pixelSecondaryAlpha
 import dev.liuyouwu.familiar.ui.theme.StarGold
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
+import dev.liuyouwu.familiar.util.toUserLine
 import dev.liuyouwu.familiar.viewmodel.ChatViewModel
 import dev.liuyouwu.familiar.viewmodel.VoiceState
 import kotlinx.coroutines.Dispatchers
@@ -298,7 +299,7 @@ fun ChatScreen(
                 }
             }
             pendingExportPayload = null
-            snackbarHostState.showSnackbar(result.fold({ "导出成功" }, { "导出失败：${(it.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}" }))
+            snackbarHostState.showSnackbar(result.fold({ "导出成功" }, { "导出失败：${it.toUserLine()}" }))
         }
     }
     val exportMarkdownLauncher = rememberLauncherForActivityResult(

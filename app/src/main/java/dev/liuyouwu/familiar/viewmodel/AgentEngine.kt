@@ -32,6 +32,7 @@ import dev.liuyouwu.familiar.skills.SkillParams
 import dev.liuyouwu.familiar.skills.SkillRegistry
 import dev.liuyouwu.familiar.viewmodel.skillhooks.SkillRepoPort
 import dev.liuyouwu.familiar.viewmodel.skillhooks.SkillSettingsPort
+import dev.liuyouwu.familiar.util.toUserLine
 
 /**
  * 自 ChatViewModel 纯移动拆出（P5 T5）：Agent 引擎生产装配配料——SkillHost 每会话
@@ -415,7 +416,7 @@ internal class ChatRoomSetupController(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            "保存成员失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}"
+            "保存成员失败：${e.toUserLine()}"
         }
     }
 

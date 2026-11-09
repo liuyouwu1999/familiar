@@ -18,6 +18,7 @@ import okhttp3.Request
 import dev.liuyouwu.familiar.util.BackendProvider
 import dev.liuyouwu.familiar.util.CloudVendor
 import dev.liuyouwu.familiar.util.ServerUrl
+import dev.liuyouwu.familiar.util.toUserLine
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -483,7 +484,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _lanScan.value = LanScanState.Failed("扫描没跑起来：${(e.message ?: "网络不可用").lineSequence().firstOrNull().orEmpty().take(60)}")
+                _lanScan.value = LanScanState.Failed("扫描没跑起来：${e.toUserLine("网络不可用")}")
             }
         }
     }
@@ -526,7 +527,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         }
         // ApiErrorHint 的完整文案可能多行，体检行只保留第一句，避免面板被撑爆
         fun brief(e: Throwable?): String =
-            diagnoseError(e).lineSequence().firstOrNull()?.trim().orEmpty().ifEmpty { "请求失败" }
+            diagnoseError(e).lineSequence().firstOrNull()?.trim().orEmpty().ifEmpty { "请求失败" } // 审计 A7：刻意保留差异化截断
 
         try {
             val normalized = ServerUrl.normalize(_serverUrl.value)
@@ -637,7 +638,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
 
     /** ApiErrorHint 的完整文案可能多行，体检行只保留第一句 */
     private fun firstLineOf(text: String): String =
-        text.lineSequence().firstOrNull()?.trim().orEmpty().ifEmpty { "请求失败" }
+        text.lineSequence().firstOrNull()?.trim().orEmpty().ifEmpty { "请求失败" } // 审计 A7：刻意保留差异化截断
 
     /** 第 1 步专用：对服务器根地址发轻量 GET（5 秒超时），成功返回一句话结论 */
     private suspend fun pingBaseUrl(url: String): Result<String> = withContext(Dispatchers.IO) {

@@ -12,6 +12,7 @@ import dev.liuyouwu.familiar.data.local.entity.LearningProfileEntryEntity
 import dev.liuyouwu.familiar.skills.profile.LearningReview
 import dev.liuyouwu.familiar.skills.profile.ReviewResultParser
 import dev.liuyouwu.familiar.viewmodel.ReviewChat
+import dev.liuyouwu.familiar.util.toUserLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -94,7 +95,7 @@ class ReviewViewModel(
         } catch (e: CancellationException) {
             throw e   // 协作取消不吞（onCleared/退出屏）
         } catch (e: Exception) {
-            messages += UiMessage(false, "（这一轮没接上：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}——再发一次试试）")
+            messages += UiMessage(false, "（这一轮没接上：${e.toUserLine()}——再发一次试试）")
         } finally {
             _busy.value = false
         }

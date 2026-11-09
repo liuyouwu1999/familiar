@@ -42,6 +42,7 @@ import dev.liuyouwu.familiar.skills.QuickCommand
 import dev.liuyouwu.familiar.skills.SkillRegistry
 import dev.liuyouwu.familiar.tools.mcp.McpToolManager
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
+import dev.liuyouwu.familiar.util.toUserLine
 import dev.liuyouwu.familiar.viewmodel.skillhooks.RevisionGuard
 
 /**
@@ -1107,7 +1108,7 @@ internal class AgentSessionController(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    error.value = "压缩失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}（原对话未改动）"
+                    error.value = "压缩失败：${e.toUserLine()}（原对话未改动）"
                 } finally {
                     resetStreamState()
                 }

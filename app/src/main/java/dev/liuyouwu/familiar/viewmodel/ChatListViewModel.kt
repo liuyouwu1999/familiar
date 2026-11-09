@@ -12,6 +12,7 @@ import dev.liuyouwu.familiar.data.remote.api.ModelsApi
 import dev.liuyouwu.familiar.core.llm.wire.ModelInfo
 import dev.liuyouwu.familiar.data.repository.ChatRepository
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
+import dev.liuyouwu.familiar.util.toUserLine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -197,7 +198,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 dev.liuyouwu.familiar.pet.PetHub.maybeGreet(dev.liuyouwu.familiar.pet.PetBondStore)
             }.onFailure {
                 // 失败时保留旧列表，只记录原因供 UI 显示+重试
-                _modelFetchError.value = "获取模型列表失败：${(it.message ?: "服务器无响应").lineSequence().firstOrNull().orEmpty().take(60)}"
+                _modelFetchError.value = "获取模型列表失败：${it.toUserLine("服务器无响应")}"
             }
         }
     }
@@ -280,7 +281,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             val hits = runCatching { chatRepository.searchMessages(q) }
                 .onFailure {
                     _messageSearchResults.value = emptyList()
-                    _modelFetchError.value = "搜索失败：${(it.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}"
+                    _modelFetchError.value = "搜索失败：${it.toUserLine()}"
                 }.getOrDefault(emptyList())
             val titleById = rawConversations.value.associate { it.id to it.title }
             _messageSearchResults.value = hits.map { msg ->
@@ -392,7 +393,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _backupMessage.value = "备份失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}"
+                _backupMessage.value = "备份失败：${e.toUserLine()}"
             }
         }
     }
@@ -427,7 +428,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _backupMessage.value = "恢复失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}"
+                _backupMessage.value = "恢复失败：${e.toUserLine()}"
             }
         }
     }

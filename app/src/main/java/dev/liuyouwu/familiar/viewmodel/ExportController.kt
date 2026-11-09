@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import dev.liuyouwu.familiar.core.llm.model.ContentBlock
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.data.repository.ChatRepository
+import dev.liuyouwu.familiar.util.toUserLine
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -120,7 +121,7 @@ internal class ExportController(
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
             } catch (e: Exception) {
-                error.value = "导出失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}"
+                error.value = "导出失败：${e.toUserLine()}"
             }
         }
     }

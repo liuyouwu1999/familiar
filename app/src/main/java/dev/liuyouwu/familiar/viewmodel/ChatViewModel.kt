@@ -39,6 +39,7 @@ import dev.liuyouwu.familiar.pet.PetSkinStore
 import dev.liuyouwu.familiar.skills.FamiliarDefaults
 import dev.liuyouwu.familiar.util.memory.FamiliarMemory
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
+import dev.liuyouwu.familiar.util.toUserLine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -697,7 +698,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             // 失败可见：提示原因且保留旧列表，不再静默无反馈
             result.onFailure { e ->
-                _error.value = "刷新模型失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}"
+                _error.value = "刷新模型失败：${e.toUserLine()}"
             }
         }
     }

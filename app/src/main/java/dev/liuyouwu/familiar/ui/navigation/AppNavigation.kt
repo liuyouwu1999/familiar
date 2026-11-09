@@ -28,6 +28,7 @@ import dev.liuyouwu.familiar.ui.screen.connection.ConnectionScreen
 import dev.liuyouwu.familiar.viewmodel.ChatListViewModel
 import dev.liuyouwu.familiar.viewmodel.ChatViewModel
 import dev.liuyouwu.familiar.viewmodel.ConnectionViewModel
+import dev.liuyouwu.familiar.util.toUserLine
 import kotlinx.coroutines.launch
 
 @Composable
@@ -93,7 +94,7 @@ fun AppNavigation() {
                 onCreated(id)
             } catch (e: Exception) {
                 android.util.Log.e("AppNavigation", "create familiar conversation failed", e)
-                chatViewModel.reportError("创建失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}")
+                chatViewModel.reportError("创建失败：${e.toUserLine()}")
             } finally {
                 creatingFamiliar = false
             }
@@ -115,7 +116,7 @@ fun AppNavigation() {
                 onCreated(id)
             } catch (e: Exception) {
                 android.util.Log.e("AppNavigation", "create eli5 conversation failed", e)
-                chatViewModel.reportError("创建失败：${(e.message ?: "未知错误").lineSequence().firstOrNull().orEmpty().take(60)}")
+                chatViewModel.reportError("创建失败：${e.toUserLine()}")
             } finally {
                 creatingEli5 = false
             }
