@@ -18,6 +18,20 @@ interface ConversationDao {
     )
     fun getAllConversations(): Flow<List<ConversationEntity>>
 
+    /**
+     * 标题搜索（审计 P5：会话列表过滤下推 DB LIKE，取代全库正文常驻流 + 内存过滤）。
+     * 传入参数须先经 ChatRepository.likeEscape 转义（`ESCAPE '\'` 配套）；
+     * ORDER BY 整句照抄 [getAllConversations]——置顶优先语义不能丢（实体无
+     * lastMessageAt 列，不得擅自改排序键）。
+     */
+    @Query(
+        "SELECT * FROM conversations WHERE title LIKE '%' || :escaped || '%' ESCAPE '\\' " +
+            "ORDER BY isPinned DESC, " +
+            "CASE WHEN isPinned = 1 THEN pinnedAt ELSE updatedAt END DESC, updatedAt DESC " +
+            "LIMIT :limit"
+    )
+    suspend fun searchByTitle(escaped: String, limit: Int = 50): List<ConversationEntity>
+
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getConversationById(id: Long): ConversationEntity?
 

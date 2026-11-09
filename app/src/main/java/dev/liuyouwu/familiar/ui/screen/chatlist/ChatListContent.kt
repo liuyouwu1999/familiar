@@ -91,43 +91,46 @@ internal fun ChatListContent(
 
     // Get conversations with preview data
     val conversationsWithPreview by viewModel.conversationsWithPreview.collectAsStateWithLifecycle()
-    val allMessages by viewModel.allMessages.collectAsStateWithLifecycle()
 
     // ===== 搜索（标题过滤 + 跨会话消息内容）=====
     var searchQuery by remember { mutableStateOf("") }
     // 跨会话消息内容搜索（输入 ≥2 字符后追加"消息内容"分区）
     val messageHits by viewModel.messageSearchResults.collectAsStateWithLifecycle()
     val isSearchingMessages by viewModel.isSearchingMessages.collectAsStateWithLifecycle()
+    // 标题搜索（审计 P5 下推 DB LIKE）：searchByTitle 命中 + 产出它的搜索词
+    val titleSearchResults by viewModel.titleSearchResults.collectAsStateWithLifecycle()
+    val titleSearchQuery by viewModel.titleSearchQuery.collectAsStateWithLifecycle()
     val isMessageSearch = searchQuery.trim().length >= 2
 
-    // 消息内容搜索 300ms 防抖：每次输入重启 LaunchedEffect，停顿满 300ms 才真正发起查询
+    // 搜索 300ms 防抖：每次输入重启 LaunchedEffect，停顿满 300ms 才真正发起查询
+    // （标题+正文在 viewModel.runSearch 合并为一次查询分发；正文仍 ≥2 字符门槛）
     LaunchedEffect(searchQuery) {
         val q = searchQuery.trim()
-        if (q.length >= 2) {
-            delay(300)
-            viewModel.searchMessages(q)
+        if (q.isEmpty()) {
+            viewModel.clearSearch()
         } else {
-            viewModel.clearMessageSearch()
+            delay(300)
+            viewModel.runSearch(q)
         }
     }
 
     // Delete confirmation
     var deleteTarget by remember { mutableStateOf<ConversationEntity?>(null) }
 
-    // Filter conversations by search query (searches title and message content)
-    val filteredConversations = remember(conversationsWithPreview, searchQuery, allMessages) {
-        if (searchQuery.isBlank()) conversationsWithPreview
-        else {
-            val matchingConvIds = allMessages
-                .filter { it.content.contains(searchQuery, ignoreCase = true) }
-                .map { it.conversationId }
-                .toSet()
-
-            conversationsWithPreview.filter { conv ->
-                conv.title.contains(searchQuery, ignoreCase = true) || conv.id in matchingConvIds
+    // 会话列表过滤（审计 P5 去双轨）：命中集来自 DB 标题 LIKE（searchByTitle）。
+    // 仅当 titleSearchQuery 与当前输入对齐才收窄——防抖窗口内先显全量，
+    // 防旧结果/空集闪"无搜索结果"；conversationsWithPreview 本身即置顶优先序，
+    // 按 id 过滤不破坏排序与预览数据。
+    val filteredConversations =
+        remember(conversationsWithPreview, searchQuery, titleSearchResults, titleSearchQuery) {
+            val q = searchQuery.trim()
+            if (q.isEmpty() || titleSearchQuery != q) {
+                conversationsWithPreview
+            } else {
+                val matchedIds = titleSearchResults.mapTo(HashSet()) { it.id }
+                conversationsWithPreview.filter { it.id in matchedIds }
             }
         }
-    }
 
     // Delete confirmation dialog
     if (deleteTarget != null) {

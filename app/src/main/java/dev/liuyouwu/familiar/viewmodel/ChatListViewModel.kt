@@ -112,11 +112,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         .getAllPresets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // All messages for search（轻量投影，不含 base64 大字段）
-    val allMessages: StateFlow<List<dev.liuyouwu.familiar.data.local.MessagePreview>> = chatRepository
-        .getAllMessagePreviews()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     // Model switching
     val currentModel: StateFlow<String> = settingsRepository.modelName
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
@@ -256,7 +251,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ===== 跨会话消息内容搜索 =====
+    // ===== 跨会话搜索（审计 P5 去双轨：标题下推 DB LIKE + 正文搜索，一次查询分发）=====
 
     private val _messageSearchResults = MutableStateFlow<List<MessageSearchHit>>(emptyList())
     val messageSearchResults: StateFlow<List<MessageSearchHit>> = _messageSearchResults
@@ -264,25 +259,42 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val _isSearchingMessages = MutableStateFlow(false)
     val isSearchingMessages: StateFlow<Boolean> = _isSearchingMessages
 
+    /** 标题搜索命中（searchByTitle 原样结果，UI 以会话 id 收窄列表、保持既有排序/预览） */
+    private val _titleSearchResults = MutableStateFlow<List<ConversationEntity>>(emptyList())
+    val titleSearchResults: StateFlow<List<ConversationEntity>> = _titleSearchResults
+
+    /** 产出 [titleSearchResults] 的搜索词：UI 与当前输入对齐后才收窄列表，
+     *  防抖窗口内不因旧结果/空集误显"无搜索结果" */
+    private val _titleSearchQuery = MutableStateFlow("")
+    val titleSearchQuery: StateFlow<String> = _titleSearchQuery
+
     /**
-     * 跨会话消息内容搜索（会话标题过滤仍由 UI 层完成，这里只查消息正文）。
-     * 命中行来自 MessageDao.searchMessages 的 MessageSearchRow 轻量投影（不含 base64 大字段）；
-     * 命中片段在本层计算。
+     * 会话列表搜索统一入口（UI 300ms 防抖后的单次分发，标题+正文合并于此）：
+     * 标题过滤任意非空词都查（沿用旧内存过滤 1 字符也生效的语义）；
+     * 正文沿用 ≥2 字符门槛，命中行来自 MessageDao.searchMessages 的
+     * MessageSearchRow 轻量投影（不含 base64 大字段），命中片段在本层计算。
      */
-    suspend fun searchMessages(query: String) {
+    suspend fun runSearch(query: String) {
         val q = query.trim()
-        if (q.length < 2) {
-            _messageSearchResults.value = emptyList()
+        if (q.isEmpty()) {
+            clearSearch()
             return
         }
-        _isSearchingMessages.value = true
+        _isSearchingMessages.value = q.length >= 2
         try {
             // 异常兜底（审计 P2-10）：DB 异常沿 LaunchedEffect 上抛会直接崩溃，转为可见错误提示
-            val hits = runCatching { chatRepository.searchMessages(q) }
-                .onFailure {
-                    _messageSearchResults.value = emptyList()
-                    _modelFetchError.value = "搜索失败：${it.toUserLine()}"
-                }.getOrDefault(emptyList())
+            val titles = searchSafely(emptyList()) { chatRepository.searchConversationTitles(q) }
+            _titleSearchResults.value = titles
+            _titleSearchQuery.value = q
+
+            if (q.length < 2) {
+                _messageSearchResults.value = emptyList()
+                return
+            }
+            val hits = searchSafely(emptyList()) {
+                _messageSearchResults.value = emptyList()
+                chatRepository.searchMessages(q)
+            }
             val titleById = rawConversations.value.associate { it.id to it.title }
             _messageSearchResults.value = hits.map { msg ->
                 MessageSearchHit(
@@ -297,9 +309,22 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** 清空消息搜索结果（搜索词少于 2 字符或离开搜索态时调用） */
-    fun clearMessageSearch() {
+    /**
+     * 搜索异常兜底：失败转可见错误提示并返回 [fallback]；CancellationException 原样
+     * 重抛（防抖重启的旧分发不得吞取消续跑，否则取消态下继续写状态流）。
+     */
+    private suspend fun <T> searchSafely(fallback: T, block: suspend () -> T): T =
+        runCatching { block() }
+            .onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                _modelFetchError.value = "搜索失败：${it.toUserLine()}"
+            }.getOrDefault(fallback)
+
+    /** 清空搜索结果（搜索词清空或离开搜索态时调用） */
+    fun clearSearch() {
         _messageSearchResults.value = emptyList()
+        _titleSearchResults.value = emptyList()
+        _titleSearchQuery.value = ""
     }
 
     /** 取首个命中位置附近的一段文字做摘要，两端留上下文并按需加省略号 */

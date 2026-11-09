@@ -18,13 +18,6 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :conversationId AND content LIKE '（圆桌话题：%'")
     suspend fun countRoundtableAnchors(conversationId: Long): Int
 
-    /** 会话列表预览/搜索专用：不含 base64 大字段 */
-    @Query(
-        "SELECT conversationId, content, timestamp, senderDisplayName " +
-            "FROM messages ORDER BY timestamp ASC, id ASC"
-    )
-    fun getAllMessagePreviews(): Flow<List<dev.liuyouwu.familiar.data.local.MessagePreview>>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity): Long
 

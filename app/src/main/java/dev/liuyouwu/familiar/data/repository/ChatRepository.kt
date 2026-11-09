@@ -35,10 +35,6 @@ class ChatRepository(
     fun getMessagesForConversation(conversationId: Long): Flow<List<MessageEntity>> =
         messageDao.getMessagesForConversation(conversationId)
 
-    /** 会话列表预览/搜索用轻量流（不含 base64 大字段） */
-    fun getAllMessagePreviews(): Flow<List<dev.liuyouwu.familiar.data.local.MessagePreview>> =
-        messageDao.getAllMessagePreviews()
-
     /** 会话列表预览聚合下推（审计 P2-14）：每会话最新消息 + 条数，SQL 聚合而非内存全量过滤 */
     fun getLastMessagePerConversation(): Flow<List<dev.liuyouwu.familiar.data.local.dao.LastMessageRow>> =
         messageDao.getLastMessagePerConversation()
@@ -204,17 +200,17 @@ class ChatRepository(
         return messageDao.getMessageCount(conversationId)
     }
 
-    // ===== 跨会话消息搜索 =====
+    // ===== 跨会话搜索（审计 P5 去双轨：标题与正文同走 DB LIKE）=====
 
     /** 全文搜索用户/助手消息正文（时间倒序，最多 50 条），空 query 由上层拦截。
-     *  LIKE 通配符（% _ \）在此统一转义，用户搜 "100%" 不会误命中 "100x"。 */
-    suspend fun searchMessages(query: String): List<MessageSearchRow> {
-        val escaped = query
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        return messageDao.searchMessages(escaped)
-    }
+     *  LIKE 通配符（% _ \）经 [likeEscape] 统一转义，用户搜 "100%" 不会误命中 "100x"。 */
+    suspend fun searchMessages(query: String): List<MessageSearchRow> =
+        messageDao.searchMessages(likeEscape(query))
+
+    /** 会话标题搜索（审计 P5：列表过滤下推 DB LIKE，取代"全库正文常驻流 + 内存过滤"双轨）。
+     *  排序与 [getAllConversations] 同句——置顶优先语义不能丢。 */
+    suspend fun searchConversationTitles(query: String): List<ConversationEntity> =
+        conversationDao.searchByTitle(likeEscape(query))
 
     // ===== Token 用量 =====
 
@@ -275,3 +271,13 @@ class ChatRepository(
             .distinctUntilChanged()
             .flowOn(Dispatchers.IO)
 }
+
+/**
+ * LIKE 通配符统一转义（审计 P5 从 searchMessages 内联抽出公用）：`\`→`\\`、`%`→`\%`、
+ * `_`→`\_`，配合 DAO 查询的 `ESCAPE '\'` 子句——标题/正文搜索共用，用户搜 "100%"
+ * 不会误命中 "100x"。注意顺序：反斜杠必须最先替换，否则会二次转义后续产物。
+ */
+internal fun likeEscape(q: String): String =
+    q.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")

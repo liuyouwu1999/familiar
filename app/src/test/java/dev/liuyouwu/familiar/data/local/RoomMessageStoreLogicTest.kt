@@ -427,7 +427,6 @@ class RoomMessageStoreLogicTest {
         private fun unreachable(): Nothing = throw UnsupportedOperationException("FakeMessageDao 未实现该方法（Room 管道 P3/真机验证）")
 
         override suspend fun countRoundtableAnchors(conversationId: Long): Int = unreachable()
-        override fun getAllMessagePreviews(): Flow<List<MessagePreview>> = unreachable()
         override suspend fun deleteMessagesForConversation(conversationId: Long) = unreachable()
         override suspend fun updateContent(id: Long, content: String) = unreachable()
         override suspend fun updateContentAndUsage(id: Long, content: String, promptTokens: Int?, completionTokens: Int?, cachedTokens: Int?) = unreachable()
@@ -470,6 +469,7 @@ class RoomMessageStoreLogicTest {
         private fun unreachable(): Nothing = throw UnsupportedOperationException("测试不触达")
         override suspend fun touch(id: Long, updatedAt: Long) { ops += "touch:$id" }
         override fun getAllConversations(): Flow<List<ConversationEntity>> = unreachable()
+        override suspend fun searchByTitle(escaped: String, limit: Int): List<ConversationEntity> = unreachable()
         override suspend fun getConversationById(id: Long): ConversationEntity? = unreachable()
         override fun observeConversation(id: Long): Flow<ConversationEntity?> = unreachable()
         override suspend fun insertConversation(conversation: ConversationEntity): Long = unreachable()
