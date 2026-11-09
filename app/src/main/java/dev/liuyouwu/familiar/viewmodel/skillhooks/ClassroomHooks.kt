@@ -1,5 +1,6 @@
 package dev.liuyouwu.familiar.viewmodel.skillhooks
 
+import android.util.Log
 import com.google.gson.Gson
 import dev.liuyouwu.familiar.agent.AgentHooks
 import dev.liuyouwu.familiar.skills.ContentProtocol
@@ -12,6 +13,7 @@ import dev.liuyouwu.familiar.core.llm.model.MessageMeta
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.core.llm.model.SenderInfo
 import dev.liuyouwu.familiar.viewmodel.RunMarkerTexts
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -219,7 +221,16 @@ class ClassroomHooks(
         // TS 提取：内存态同步刷新（下一 run 注入源）+ 列落库异步（宿主 scope）
         outcome.stateJson?.let { json ->
             tutorStateJson = json
-            scope.launch { repo.updateTutorState(conversationId, json) }
+            // 旁路 launch 补捕获（审计 R1，任务 1.1）：落列失败只告警，不逃逸
+            scope.launch {
+                try {
+                    repo.updateTutorState(conversationId, json)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("ClassroomHooks", "background hook failed", e)
+                }
+            }
         }
         if (result.steeringLeftover) return   // P-steer 闸①（spec §3.3 两道闸）：本 run 收束由 executeRun 的残留转投负责，autoContinue/废稿不另起 run（防同链双 executeRun）；TS 提取已先行完成，状态列不丢
         val runner = followUp ?: return
@@ -234,15 +245,23 @@ class ClassroomHooks(
         val retryBranch = !continueBranch &&
             outcome.isDraft && chain.context.depth == 0 && currentUserText.isNotBlank()
         if (!continueBranch && !retryBranch) return   // 无后续 run：链上不留协程
+        // 旁路 launch 补捕获（审计 R1，任务 1.1）：gap/续跑协程失败只告警，不逃逸
+        // 无人 await 的旁路；取消（链取消）原样传播。
         chain.scope.launch {
-            if (continueBranch) {
-                chain.context.depth++
-                pendingContinuationNote = true
-                delay(gapMs)   // 段间停顿挂 chain.scope：链取消即终止（不复活）
-            } else {
-                chain.context.depth++   // 废稿重试限一次：重试段 depth=1，再废稿不再重试
+            try {
+                if (continueBranch) {
+                    chain.context.depth++
+                    pendingContinuationNote = true
+                    delay(gapMs)   // 段间停顿挂 chain.scope：链取消即终止（不复活）
+                } else {
+                    chain.context.depth++   // 废稿重试限一次：重试段 depth=1，再废稿不再重试
+                }
+                runner()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("ClassroomHooks", "background hook failed", e)
             }
-            runner()
         }
     }
 

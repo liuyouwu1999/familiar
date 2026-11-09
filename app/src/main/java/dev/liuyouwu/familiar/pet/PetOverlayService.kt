@@ -36,10 +36,11 @@ import dev.liuyouwu.familiar.R
 import dev.liuyouwu.familiar.data.local.AppDatabase
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
 import dev.liuyouwu.familiar.skills.profile.LearningReview
+import dev.liuyouwu.familiar.util.appScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -72,7 +73,8 @@ import kotlin.random.Random
  */
 class PetOverlayService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // 宿主 scope 装统一 handler（审计 R1，任务 1.1）：旁路协程异常收口记日志
+    private val scope = appScope(Dispatchers.Main.immediate, "PetOverlayService")
     private lateinit var repo: SettingsRepository
     private val mainHandler = Handler(Looper.getMainLooper())
     private val density get() = resources.displayMetrics.density
@@ -621,7 +623,16 @@ class PetOverlayService : Service() {
             ) {
                 // 偷吃 token 表演（32 帧 one-shot，播完自动收束）+ 互动计数（spec §5 互动面）
                 PetHub.perform(PetHub.Mood.TOKEN, PetHub.pickLine("feed"))
-                scope.launch { PetBondStore.noteTouch() }
+                // 旁路 launch 补捕获（审计 R1，任务 1.1）：计数失败只告警，不逃逸
+                scope.launch {
+                    try {
+                        PetBondStore.noteTouch()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w("PetOverlay", "互动计数失败", e)
+                    }
+                }
             }
         }
         row("来段表演") {
@@ -631,9 +642,16 @@ class PetOverlayService : Service() {
         row("躲起来") {
             // 与设置里「桌宠」开关同一体：关掉总开关（设置按钮同步变关），全应用收回
             PetHub.say(PetHub.pickLine("farewell"))
+            // 旁路 launch 补捕获（审计 R1，任务 1.1）：关开关失败只告警，不逃逸
             scope.launch {
-                delay(1600)
-                repo.setPetEnabled(false)
+                try {
+                    delay(1600)
+                    repo.setPetEnabled(false)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("PetOverlay", "关闭桌宠开关失败", e)
+                }
             }
         }
         return menu
@@ -977,7 +995,16 @@ class PetOverlayService : Service() {
                             // 存原始比例（可为负/超 1，贴边半出屏停放），恢复端放宽钳制
                             val nx = wp.x / sw
                             val ny = wp.y / shh
-                            scope.launch { repo.setPetPosition(nx, ny) }
+                            // 旁路 launch 补捕获（审计 R1，任务 1.1）：位置保存失败只告警，不逃逸
+                            scope.launch {
+                                try {
+                                    repo.setPetPosition(nx, ny)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Log.w("PetOverlay", "保存桌宠位置失败", e)
+                                }
+                            }
                         }
                     }
                     dragTracker?.recycle()

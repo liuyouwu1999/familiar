@@ -10,14 +10,14 @@ import dev.liuyouwu.familiar.core.llm.model.StreamEvent
 import dev.liuyouwu.familiar.core.llm.model.Usage
 import dev.liuyouwu.familiar.core.llm.wire.ToolMode
 import dev.liuyouwu.familiar.core.llm.wire.ToolSpec
+import dev.liuyouwu.familiar.util.appScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -308,7 +308,18 @@ class AgentSession(
             publish { st -> st.copy(streaming = false, chainDepth = chain.context.depth) }
             return
         }
-        chain.scope.launch { executeRun(conversationId, chain, modelOverride = null) }
+        // 旁路 launch 补捕获（审计 R1，任务 1.1）：executeRun 不捕的落库等异常
+        // 原样逃逸无人 await 的旁路协程——此处收口进 lastError（不崩、不外抛）；
+        // 取消原样传播（链取消语义不动）。
+        chain.scope.launch {
+            try {
+                executeRun(conversationId, chain, modelOverride = null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                publish { it.copy(lastError = e.message ?: "后台续讲失败") }
+            }
+        }
     }
 
     /** 编辑重发：从被编辑行起整段截断，替入新 user 行重跑（开新链）。 */
@@ -659,7 +670,9 @@ class AgentSession(
      */
     private fun openChain(conversationId: String): RunChain {
         currentChain?.cancel()
-        return RunChain(conversationId, CoroutineScope(SupervisorJob() + Dispatchers.Default))
+        // 链 scope 装统一 handler（审计 R1，任务 1.1）：旁路协程异常收口记日志，
+        // 不再逃逸全局 handler（进程级风险）；SupervisorJob 语义不变。
+        return RunChain(conversationId, appScope(Dispatchers.Default, "AgentSessionChain"))
         // 采样播种在 onChainOpened 之前：预算门回调（gate::setChain）不消费 sampling，
         // 次序无依赖，但播种先行使首个 transformContext 起即可读
             .also {
@@ -847,8 +860,9 @@ class AgentSession(
         }
     }
 
+    /** 原子发布（审计 R4，任务 1.1）：read-modify-write 的竞态（丢更新）改 CAS 循环。 */
     private inline fun publish(transform: (SessionState) -> SessionState) {
-        events.value = transform(events.value)
+        events.update { transform(it) }
     }
 
     private fun mintId(prefix: String): String = "$prefix-" + UUID.randomUUID()

@@ -22,6 +22,7 @@ import dev.liuyouwu.familiar.skills.TypeInferer
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @Database(
@@ -365,7 +366,8 @@ abstract class AppDatabase : RoomDatabase() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
                             // Insert default templates for new installations
-                            CoroutineScope(Dispatchers.IO).launch {
+                            // SupervisorJob（审计 R4，任务 1.1）：单子协程失败不取消 scope Job
+                            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                                 // 裸协程兜底：预置写入失败只告警，不能让新装首启闪退
                                 runCatching {
                                     INSTANCE?.promptTemplateDao()?.insertDefaultTemplates()

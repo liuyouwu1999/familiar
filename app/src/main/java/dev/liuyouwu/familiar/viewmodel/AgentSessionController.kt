@@ -553,28 +553,36 @@ internal class AgentSessionController(
                     val epochAtSend = chainGuard.stopEpoch
                     pendingFollowUp = conversationId
                     scope.launch {
-                        // UI 附件/引用类型 → 内核类型，映射照抄现状 send 的 s.send 调用点
-                        val coreAtts = attachments.mapNotNull(::toCoreAttachment)
-                        val replyRef = replyTarget0?.let { ReplyRef(it.id, it.content.take(100), it.role) }
-                        when (session.steer(conversationId.toString(), text, coreAtts, replyRef)) {
-                            // Steered：消息已注入当前 run 下一回合，收线兜答不必——清 flag；
-                            // 仅在未被停止清过（epoch 未进）且仍是本会话在位时清（被停止清零
-                            // 即保持 null，不复活——停止语义优先；被收线消费/异会话改写亦不动）。
-                            // UI 镜像同步清：插话成功不是排队，横幅不亮
-                            dev.liuyouwu.familiar.agent.SteerOutcome.Steered -> {
-                                if (chainGuard.stopEpoch == epochAtSend && pendingFollowUp == conversationId) {
-                                    pendingFollowUp = null
-                                    _pendingFollowUpUi.value = null
+                        // 旁路 launch 补捕获（审计 R1，任务 1.1）：steer 落库等失败
+                        // 收口进 error 通道，不逃逸 viewModelScope；取消原样传播。
+                        try {
+                            // UI 附件/引用类型 → 内核类型，映射照抄现状 send 的 s.send 调用点
+                            val coreAtts = attachments.mapNotNull(::toCoreAttachment)
+                            val replyRef = replyTarget0?.let { ReplyRef(it.id, it.content.take(100), it.role) }
+                            when (session.steer(conversationId.toString(), text, coreAtts, replyRef)) {
+                                // Steered：消息已注入当前 run 下一回合，收线兜答不必——清 flag；
+                                // 仅在未被停止清过（epoch 未进）且仍是本会话在位时清（被停止清零
+                                // 即保持 null，不复活——停止语义优先；被收线消费/异会话改写亦不动）。
+                                // UI 镜像同步清：插话成功不是排队，横幅不亮
+                                dev.liuyouwu.familiar.agent.SteerOutcome.Steered -> {
+                                    if (chainGuard.stopEpoch == epochAtSend && pendingFollowUp == conversationId) {
+                                        pendingFollowUp = null
+                                        _pendingFollowUpUi.value = null
+                                    }
+                                }
+                                // Deferred：引擎队列未开（行已落库），flag 已在位——保持到收线
+                                // 消费兜答（零丢失）；期间被停止清零即保持 null（停止语义优先）。
+                                // 镜像按同样守卫置位（异步落后可接受，置位语义以 volatile 为准）
+                                dev.liuyouwu.familiar.agent.SteerOutcome.Deferred -> {
+                                    if (chainGuard.stopEpoch == epochAtSend && pendingFollowUp == conversationId) {
+                                        _pendingFollowUpUi.value = QueuedFollowUp(conversationId, text)
+                                    }
                                 }
                             }
-                            // Deferred：引擎队列未开（行已落库），flag 已在位——保持到收线
-                            // 消费兜答（零丢失）；期间被停止清零即保持 null（停止语义优先）。
-                            // 镜像按同样守卫置位（异步落后可接受，置位语义以 volatile 为准）
-                            dev.liuyouwu.familiar.agent.SteerOutcome.Deferred -> {
-                                if (chainGuard.stopEpoch == epochAtSend && pendingFollowUp == conversationId) {
-                                    _pendingFollowUpUi.value = QueuedFollowUp(conversationId, text)
-                                }
-                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            error.value = e.message ?: "操作失败"
                         }
                     }
                     return
@@ -652,10 +660,17 @@ internal class AgentSessionController(
         // 停止语义优先）。此处无 Steered 清除分支：persistUser 无注入语义，flag 保持到收线。
         pendingFollowUp = conversationId
         _pendingFollowUpUi.value = QueuedFollowUp(conversationId, text)
+        // 旁路 launch 补捕获（审计 R1，任务 1.1）：排队落库失败收口进 error 通道
         scope.launch {
-            val coreAtts = attachments.mapNotNull(::toCoreAttachment)
-            val replyRef = replyTarget0?.let { ReplyRef(it.id, it.content.take(100), it.role) }
-            session.persistUser(conversationId.toString(), text, coreAtts, replyRef)
+            try {
+                val coreAtts = attachments.mapNotNull(::toCoreAttachment)
+                val replyRef = replyTarget0?.let { ReplyRef(it.id, it.content.take(100), it.role) }
+                session.persistUser(conversationId.toString(), text, coreAtts, replyRef)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error.value = e.message ?: "操作失败"
+            }
         }
     }
 

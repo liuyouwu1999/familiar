@@ -40,6 +40,7 @@ import dev.liuyouwu.familiar.tools.ToolRegistry
 import dev.liuyouwu.familiar.tools.WebSearchTool
 import dev.liuyouwu.familiar.util.ConversationDefaults
 import dev.liuyouwu.familiar.util.StyleGuardrails
+import dev.liuyouwu.familiar.util.appScope
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
 import dev.liuyouwu.familiar.util.persona.PersonaCard
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
@@ -171,8 +172,8 @@ class SkillHost(
      * 工具面统一追加。缺省空 = 未接线/零配置（既有装配逐位不变——行为等价门的零改动证明）。
      */
     private val mcpTools: List<AgentTool> = emptyList(),
-    /** hooks 内 repo 写/回调发射的宿主 scope（生产 IO；测试 runBlocking 作用域） */
-    private val hooksScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    /** hooks 内 repo 写/回调发射的宿主 scope（生产 IO 常驻 + 统一异常 handler，审计 R1；测试 runBlocking 作用域） */
+    private val hooksScope: CoroutineScope = appScope(Dispatchers.IO, "SkillHostHooks"),
     /** B2-L4 familiar 相似度重试发起器（Controller 回填；null = L4 不启用）。参数 = 目标 assistant 行 id */
     private val familiarReviseLauncher: ((Long) -> Unit)? = null,
     /** 课堂续讲段间停顿（VM :1238 的 900ms；测试注短值） */
