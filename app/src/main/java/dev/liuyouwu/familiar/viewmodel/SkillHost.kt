@@ -50,6 +50,7 @@ import dev.liuyouwu.familiar.viewmodel.skillhooks.FamiliarHooks
 import dev.liuyouwu.familiar.viewmodel.skillhooks.FamiliarParams
 import dev.liuyouwu.familiar.viewmodel.skillhooks.SkillRepoPort
 import dev.liuyouwu.familiar.viewmodel.skillhooks.SkillSettingsPort
+import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateKeeper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -188,6 +189,13 @@ class SkillHost(
     onRoleTurnEnded: (roleName: String, text: String) -> Unit = { _, _ -> },
     private val warn: (String) -> Unit = {},
     private val titleTrigger: (RunResult) -> Unit = {},
+    /**
+     * 工具确认闸门（审计 S2）：高危四件（http_get/clipboard_read/clipboard_write/
+     * open_url）执行前经用户确认。缺省 [ToolGateKeeper.allowAll] 全放行——既有
+     * 测试与未接线装配零改动；生产由 ChatViewModel 注入真闸门（白名单走
+     * SettingsRepository），装配点见 [assembleSession] 的 wrap 组合包装。
+     */
+    private val toolGate: ToolGateKeeper = ToolGateKeeper.allowAll(),
 ) {
     /** VM reveal 链消费的 TTS 触发口（hooks 不读 TTS，防双读——见类 KDoc）。 */
     val tts: (Long) -> Unit = ttsTrigger
@@ -521,6 +529,9 @@ class SkillHost(
          */
         maxContextOverride: (() -> Int)? = null,
     ): Pair<AgentSession, AgentLoop> {
+        // 审计 S2：工具确认闸门组合包装——六类型共用装配段单点接入（后续 hooks
+        // 使用点全走 effectiveHooks；复习侧信道与群聊调度请求不经此且 tools=空）
+        val effectiveHooks = toolGate.wrap(hooks)
         // Finding 1 修订（单一来源收口）：maxContext 与 maxTokens 从同一 effectiveMax
         // 求值——缺省 null 时即 settings::maxContext 原供应商引用，非圆桌类型两值
         // 与改前逐位一致
@@ -562,7 +573,7 @@ class SkillHost(
             store = store,
             loop = loop,
             markers = markers,
-            hooks = hooks,
+            hooks = effectiveHooks,
             system = { system },
             // specs 按 toolNames（**装配参**，本函数已无同名局部变量——评审 P2-4 遮蔽陷阱
             // 钉死）保序导出；未注册名静默丢弃（ToolRegistry.specs 同口径降级）；
@@ -820,6 +831,7 @@ class ReviewChat internal constructor(
             system = system,
             tools = emptyList(),
             hooks = object : AgentHooks {},   // 裸 hooks：复习不吃任何会话级上下文变换
+            // 审计 S2：此路径无工具面（tools=emptyList()）；若未来加工具，必须经 ToolGateKeeper.wrap
             chain = chain,
             mode = ToolMode.NATIVE,
             model = model,

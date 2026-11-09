@@ -13,8 +13,12 @@ interface AgentHooks {
     /** 每轮请求前变换上下文：裁剪历史、注入记忆、收尾护栏置空 tools 等。 */
     fun transformContext(ctx: ContextBuilder) {}
 
-    /** 工具调用闸门：Allow 放行；Block(reason) 拒绝并以 isError ToolResult 回填。 */
-    fun beforeToolCall(call: ContentBlock.ToolCall): Verdict = Verdict.Allow
+    /**
+     * 工具调用闸门：Allow 放行；Block(reason) 拒绝并以 isError ToolResult 回填。
+     * suspend（审计 S2）：闸门可挂起等用户确认（ToolGateKeeper 审批窗口）——
+     * 默认实现仍 Allow（裸循环零变化；AgentLoop 调用点本就在 suspend run 内）。
+     */
+    suspend fun beforeToolCall(call: ContentBlock.ToolCall): Verdict = Verdict.Allow
 
     /** 每个 turn 结束后咨询：CONTINUE 继续循环，END 立即收束（无工具 turn 默认即停，见 AgentLoop）。 */
     fun finishTurn(turn: Int, msgs: List<AgentMessage>): Decision = Decision.CONTINUE

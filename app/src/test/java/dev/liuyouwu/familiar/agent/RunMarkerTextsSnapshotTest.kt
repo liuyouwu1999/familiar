@@ -190,7 +190,7 @@ class RunMarkerTextsSnapshotTest {
         // beforeToolCall 内取消链：工具前检查点已过，withContext(chain.scope) 即抛
         // CancellationException → 活路径 catch 补落注入的取消文案（非生产字面）
         val cancelHooks = object : AgentHooks {
-            override fun beforeToolCall(call: ContentBlock.ToolCall): Verdict {
+            override suspend fun beforeToolCall(call: ContentBlock.ToolCall): Verdict {
                 chain.cancel()
                 return Verdict.Allow
             }

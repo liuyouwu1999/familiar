@@ -242,6 +242,8 @@ class MultiAgentOrchestrator(
                 system = systemPrompt,
                 tools = emptyList(),
                 hooks = object : AgentHooks {},   // 裸 hooks：调度请求不吃会话级上下文变换
+                // 审计 S2：此路径无工具面（tools=emptyList()）；若未来加工具，必须经 ToolGateKeeper.wrap
+                //（角色 run 走 session.runOnChain，其 hooks 已在 SkillHost.assembleSession 经闸门包装）
                 chain = chain,
                 mode = ToolMode.NATIVE,
                 maxTurns = 1,

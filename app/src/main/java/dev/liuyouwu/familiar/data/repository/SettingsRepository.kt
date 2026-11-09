@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -84,6 +85,11 @@ class SettingsRepository(private val context: Context) {
         private val KEY_WEB_SEARCH_ENABLED = booleanPreferencesKey("web_search_enabled")
         // 请求诊断转储（审计 S4）：last_request.json 明文落盘开关，默认关
         private val KEY_DIAG_DUMP_ENABLED = booleanPreferencesKey("diag_dump_enabled")
+
+        // 工具确认闸门白名单（审计 S2）：http_get/open_url「总是允许」的 host 集合。
+        // DataStore 原生 Set<String>（stringSetPreferencesKey，初始空）——值为纯字符串
+        // 集，无需 MCP 配置那种 Gson JSON 载体；存取模式循既有集合先例（键 + 挂起读写对）
+        private val KEY_HTTP_GET_ALLOWED_HOSTS = stringSetPreferencesKey("http_get_allowed_hosts")
 
         // ===== MCP 服务器（tools/mcp）=====
         // 服务器列表：Gson JSON 数组（tokenCipher 字段含 CryptoStore 密文，同 KEY_API_KEY_ENC 口径）
@@ -591,6 +597,19 @@ class SettingsRepository(private val context: Context) {
     suspend fun setDiagDumpEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_DIAG_DUMP_ENABLED] = enabled
+        }
+    }
+
+    // ===== 工具确认闸门白名单（审计 S2）=====
+
+    /** 已「总是允许」的 host 白名单（DataStore Set<String>，初始空）；消费方 = ToolGateKeeper。 */
+    suspend fun httpGetAllowedHosts(): Set<String> =
+        context.dataStore.data.first()[KEY_HTTP_GET_ALLOWED_HOSTS] ?: emptySet()
+
+    /** 白名单整体回写（ToolGateKeeper 的 ALLOW_ALWAYS 路径：现值 + 本次 host）。 */
+    suspend fun setHttpGetAllowedHosts(hosts: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_HTTP_GET_ALLOWED_HOSTS] = hosts
         }
     }
 

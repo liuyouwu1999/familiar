@@ -381,7 +381,7 @@ class AgentEndToEndTest {
         val registry = webSearchRegistry(engine, gate)
         val llm = ScriptedLlm("web_search").apply { script("[C]敏感词", "[T]正文照常") }
         val hooks = object : RecordingHooks(gate) {
-            override fun beforeToolCall(call: ContentBlock.ToolCall) = Verdict.Block("管理员禁止")
+            override suspend fun beforeToolCall(call: ContentBlock.ToolCall) = Verdict.Block("管理员禁止")
         }
         val session = newSession(store, AgentLoop(llm, registry, markers), hooks, registry.specs(listOf("web_search")))
 

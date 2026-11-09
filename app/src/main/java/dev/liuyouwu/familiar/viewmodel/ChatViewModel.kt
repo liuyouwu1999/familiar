@@ -40,6 +40,7 @@ import dev.liuyouwu.familiar.skills.FamiliarDefaults
 import dev.liuyouwu.familiar.util.memory.FamiliarMemory
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
 import dev.liuyouwu.familiar.util.toUserLine
+import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateKeeper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -253,6 +254,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ===== P5 T5 Controller 拆分（纯移动拆出，构造注入依赖与回写通道） =====
 
+    /**
+     * 工具确认闸门（审计 S2）：高危四件（http_get/剪贴板/open_url）执行前经用户
+     * 确认。审批请求由 ChatScreen 订阅 [ToolGateKeeper.pendingApproval]（订阅计数
+     * =前台监听者在场判定，无 UI 场景默认拒）；「总是允许」host 白名单持久化在
+     * SettingsRepository。SkillHost 装配点（agentSession/reviewHost）共享本实例
+     * ——声明须在 [agentSession] 之前（构造传参初始化序）。
+     */
+    val toolGate = ToolGateKeeper(
+        loadAllowedHosts = settingsRepository::httpGetAllowedHosts,
+        saveAllowedHosts = settingsRepository::setHttpGetAllowedHosts,
+    )
+
     /** 停止代数/链元数据共享读通道（agent 写、voice 桥读，字段语义见其 KDoc）。 */
     private val chainGuard = AgentChainGuard()
 
@@ -276,6 +289,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         replyingTo = _replyingTo, selectedAttachments = _selectedAttachments,
         autoReadEnabled = _autoReadEnabled, searchStatus = _searchStatus,
         familiarReveal = _familiarReveal,
+        toolGate = toolGate,
     )
 
     private val export = ExportController(
@@ -838,6 +852,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             agentFilesRoot = java.io.File(context.filesDir, "agent_files"),
             appContext = engine.context,
             agentOkHttp = engine.agentOkHttp,
+            // 审计 S2：与六类型装配共享同一闸门（复习侧信道现无工具面，闸门不会被
+            // 触达；共享保证未来加工具时同受确认门约束）
+            toolGate = toolGate,
         )
     }
 

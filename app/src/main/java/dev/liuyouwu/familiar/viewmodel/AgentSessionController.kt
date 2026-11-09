@@ -44,6 +44,7 @@ import dev.liuyouwu.familiar.tools.mcp.McpToolManager
 import dev.liuyouwu.familiar.util.memory.FamiliarMemoryStore
 import dev.liuyouwu.familiar.util.toUserLine
 import dev.liuyouwu.familiar.viewmodel.skillhooks.RevisionGuard
+import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateKeeper
 
 /**
  * 停止代数 + 当前链元数据（P5 T5 自 ChatViewModel 字段原样迁入）：原
@@ -121,6 +122,8 @@ internal class AgentSessionController(
     private val autoReadEnabled: StateFlow<Boolean>,
     private val searchStatus: MutableStateFlow<String?>,
     private val familiarReveal: MutableStateFlow<Pair<Long, Int>?>,
+    /** 工具确认闸门（审计 S2）：ChatViewModel 持有共享实例，经此透传 SkillHost 装配。 */
+    private val toolGate: ToolGateKeeper,
 ) {
 
     private val skillRegistry: SkillRegistry by lazy(skillRegistryProvider)
@@ -397,6 +400,8 @@ internal class AgentSessionController(
                 // B2-L4 familiar 相似度重试发起器：闭包捕获 convId（titleTrigger 同款——
                 // 异步核验/重试不串会话），核验通过后才经 regenerateLastResponse 发起
                 familiarReviseLauncher = { targetRowId -> launchFamiliarRevision(convId, targetRowId) },
+                // 审计 S2：工具确认闸门（assembleSession 内 wrap 织入 beforeToolCall）
+                toolGate = toolGate,
             )
             val session = try {
                 host.sessionFor(conversation)

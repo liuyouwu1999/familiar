@@ -127,6 +127,7 @@ import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
 import dev.liuyouwu.familiar.util.toUserLine
 import dev.liuyouwu.familiar.viewmodel.ChatViewModel
 import dev.liuyouwu.familiar.viewmodel.VoiceState
+import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -236,6 +237,11 @@ fun ChatScreen(
     val familiarHeader by viewModel.familiarHeader.collectAsStateWithLifecycle()
     val isFamiliarChat = familiarHeader.conversationId == conversationId
     var showMemoryDialog by rememberSaveable { mutableStateOf(false) }
+
+    // 工具审批桥（审计 S2）：高危工具（http_get/剪贴板/open_url）执行前经
+    // ToolGateKeeper 挂起等确认——本 collect 即"前台监听者在场"的判定源
+    // （pendingApproval.subscriptionCount>0）；离开本屏即撤订，闸门自动落无前台拒绝
+    val pendingToolApproval by viewModel.toolGate.pendingApproval.collectAsStateWithLifecycle()
 
     // Voice input state
     val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
@@ -1377,6 +1383,49 @@ fun ChatScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirm = false }) { Text("取消") }
+            }
+        )
+    }
+
+    // 工具审批对话框（审计 S2）：标题=工具名，正文=摘要/目标 host；三键=拒绝/允许一次/
+    // 总是允许（host 回写白名单）。点外部/返回键=拒绝（默认不放行）；闸门侧超时同样
+    // 视同拒绝。collectAsStateWithLifecycle 已在上方常驻订阅（在场判定源）。
+    val approval = pendingToolApproval
+    if (approval != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.toolGate.respond(ToolGateResponse.DENY) },
+            title = { Text("确认工具调用：${approval.tool}") },
+            text = {
+                Column {
+                    Text(approval.summary)
+                    approval.host?.let {
+                        Text(
+                            "目标主机：$it",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        "AI 请求执行上述操作，允许吗？",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { viewModel.toolGate.respond(ToolGateResponse.ALLOW_ALWAYS) }) {
+                        Text("总是允许")
+                    }
+                    TextButton(onClick = { viewModel.toolGate.respond(ToolGateResponse.ALLOW_ONCE) }) {
+                        Text("允许一次")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.toolGate.respond(ToolGateResponse.DENY) }) {
+                    Text("拒绝", color = MaterialTheme.colorScheme.error)
+                }
             }
         )
     }
