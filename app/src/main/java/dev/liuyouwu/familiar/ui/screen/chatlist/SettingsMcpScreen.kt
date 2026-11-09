@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.liuyouwu.familiar.data.repository.SettingsRepository
 import dev.liuyouwu.familiar.tools.mcp.McpServerConfig
 import dev.liuyouwu.familiar.tools.mcp.McpToolManager
+import dev.liuyouwu.familiar.ui.component.SettingsSwitchRow
 import dev.liuyouwu.familiar.ui.theme.GrassGreen
 import dev.liuyouwu.familiar.ui.theme.LocalPixelDark
 import dev.liuyouwu.familiar.ui.theme.PaperLight
@@ -113,26 +114,16 @@ fun SettingsMcpScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            // 全局总开关
+            // 全局总开关（审计 A6：行形态收口到共享 SettingsSwitchRow）
             item {
                 Spacer(modifier = Modifier.size(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("启用 MCP", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "关闭后不连接任何 MCP 服务器，它的工具也不会出现在对话里",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                    }
-                    Switch(
-                        checked = mcpEnabled,
-                        onCheckedChange = { scope.launch { settingsRepository.setMcpEnabled(it) } }
-                    )
-                }
+                SettingsSwitchRow(
+                    title = "启用 MCP",
+                    checked = mcpEnabled,
+                    onCheckedChange = { scope.launch { settingsRepository.setMcpEnabled(it) } },
+                    description = "关闭后不连接任何 MCP 服务器，它的工具也不会出现在对话里",
+                    titleFontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.size(8.dp))
             }
             if (servers.isEmpty()) {

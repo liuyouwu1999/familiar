@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
 import dev.liuyouwu.familiar.ui.model.PromptTemplateUi
+import dev.liuyouwu.familiar.ui.component.SettingsDirtyTextField
+import dev.liuyouwu.familiar.ui.component.SettingsTextFieldState
 import dev.liuyouwu.familiar.ui.theme.PixelBottomPanel
 import dev.liuyouwu.familiar.ui.theme.PixelButton
 import dev.liuyouwu.familiar.ui.theme.pixelSecondaryAlpha
@@ -555,7 +557,9 @@ private fun TemplateManagerDialog(
 /**
  * 模板编辑器弹窗：编辑与新建共用一份表单体（原两份重复 AlertDialog 合一）。
  * 表单态随弹窗自持（进入组合时从初值装载——编辑经 state.editingTemplate 传入实体，
- * 新建传空），可用 {{变量}} 占位。
+ * 新建传空），可用 {{变量}} 占位。表单态载体换用共享 SettingsTextFieldState+
+ * SettingsDirtyTextField（审计 A6：无外部真值流跟随的表单播种形态——键入置脏无害，
+ * 重开弹窗经 remember(key) 重播种，装载语义与原 var by remember(key) 一致）。
  */
 @Composable
 private fun TemplateEditorDialog(
@@ -568,27 +572,21 @@ private fun TemplateEditorDialog(
     onDismiss: () -> Unit
 ) {
     if (!visible) return
-    var name by remember(initialName, initialContent) { mutableStateOf(initialName) }
-    var content by remember(initialName, initialContent) { mutableStateOf(initialContent) }
+    val nameState = remember(initialName, initialContent) { SettingsTextFieldState(initialName) }
+    val contentState = remember(initialName, initialContent) { SettingsTextFieldState(initialContent) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("模板名称") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                SettingsDirtyTextField(nameState, "模板名称", Modifier.fillMaxWidth(), singleLine = false)
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = content,
-                    onValueChange = { content = it },
-                    label = { Text("提示词内容") },
-                    modifier = Modifier
+                SettingsDirtyTextField(
+                    contentState, "提示词内容",
+                    Modifier
                         .fillMaxWidth()
-                        .height(150.dp)
+                        .height(150.dp),
+                    singleLine = false
                 )
                 Text(
                     text = "可用 {{变量}} 占位，从模板新建时逐项填写",
@@ -599,8 +597,8 @@ private fun TemplateEditorDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, content) },
-                enabled = name.isNotBlank() && content.isNotBlank()
+                onClick = { onConfirm(nameState.value.orEmpty(), contentState.value.orEmpty()) },
+                enabled = !nameState.value.isNullOrBlank() && !contentState.value.isNullOrBlank()
             ) {
                 Text(confirmLabel)
             }
