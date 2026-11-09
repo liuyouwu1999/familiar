@@ -103,10 +103,7 @@ import dev.liuyouwu.familiar.ui.theme.StarGold
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
 import dev.liuyouwu.familiar.viewmodel.ChatViewModel
-import dev.liuyouwu.familiar.viewmodel.StreamStats
-import dev.liuyouwu.familiar.viewmodel.StreamingState
 import dev.liuyouwu.familiar.viewmodel.VoiceState
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -175,27 +172,9 @@ fun ChatScreen(
         onBack()
     }
 
-    // 流式状态分组（审计 A3）：isStreaming/text/reasoning/toolStatus 四流合一为
-    // StreamingState（定义在 viewmodel/StreamSinks.kt；T3.6 VM 侧合并后此处改收单流）。
-    // initialValue 取各流现值——首帧与逐流 collect 帧等价，不闪过渡态
-    val streamingStateFlow = remember(viewModel) {
-        combine(
-            viewModel.isLoading,
-            viewModel.streamingText,
-            viewModel.streamingReasoning,
-            viewModel.streamingToolStatus,
-        ) { isStreaming, text, reasoning, toolStatus ->
-            StreamingState(isStreaming, text, reasoning, toolStatus)
-        }
-    }
-    val streamingState by streamingStateFlow.collectAsStateWithLifecycle(
-        initialValue = StreamingState(
-            isStreaming = viewModel.isLoading.value,
-            text = viewModel.streamingText.value,
-            reasoning = viewModel.streamingReasoning.value,
-            toolStatus = viewModel.streamingToolStatus.value,
-        )
-    )
+    // 流式状态分组（审计 A3 → A5 下沉 VM）：isStreaming/text/reasoning/toolStatus
+    // 四流合一的 StreamingState 由 ChatViewModel 聚合产出，本屏单流收集
+    val streamingState by viewModel.streamingState.collectAsStateWithLifecycle()
     val attachments by viewModel.selectedAttachments.collectAsStateWithLifecycle()
     val replyingTo by viewModel.replyingTo.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -210,32 +189,10 @@ fun ChatScreen(
     // ——消费点已随对话设置框拆入 ChatDialogs.kt（对话框内部 collect）
     val isSpeaking by viewModel.isSpeaking.collectAsStateWithLifecycle()
     val autoReadEnabled by viewModel.autoReadEnabled.collectAsStateWithLifecycle()
-    // 生成用量分组（审计 A3）：tps/上下文占用/生成 token/缓存命中 四流合一为 StreamStats
-    // （viewmodel/StreamSinks.kt；T3.6 VM 侧合并后此处改收单流）。>0 判定在合并处
-    // 转 nullable，与原各 UI 位的 `> 0` 判定同口径
-    val streamStatsFlow = remember(viewModel) {
-        combine(
-            viewModel.tokensPerSecond,
-            viewModel.lastContextTokens,
-            viewModel.tokenCount,
-            viewModel.lastCacheHit,
-        ) { tps, lastContextTokens, tokenCount, lastCacheHit ->
-            StreamStats(
-                tps = tps.takeIf { it > 0.0 },
-                promptTokens = lastContextTokens.takeIf { it > 0 },
-                completionTokens = tokenCount.takeIf { it > 0 },
-                cachedTokens = lastCacheHit,
-            )
-        }
-    }
-    val streamStats by streamStatsFlow.collectAsStateWithLifecycle(
-        initialValue = StreamStats(
-            tps = viewModel.tokensPerSecond.value.takeIf { it > 0.0 },
-            promptTokens = viewModel.lastContextTokens.value.takeIf { it > 0 },
-            completionTokens = viewModel.tokenCount.value.takeIf { it > 0 },
-            cachedTokens = viewModel.lastCacheHit.value,
-        )
-    )
+    // 生成用量分组（审计 A3 → A5 下沉 VM）：tps/上下文占用/生成 token/缓存命中
+    // 四流合一的 StreamStats 由 ChatViewModel 聚合产出，本屏单流收集；>0 判定
+    // 在 VM 合并处转 nullable，与原各 UI 位的 `> 0` 判定同口径
+    val streamStats by viewModel.streamStats.collectAsStateWithLifecycle()
     val currentModel by viewModel.currentModel.collectAsStateWithLifecycle()
     val availableModels by viewModel.availableModels.collectAsStateWithLifecycle()
     // videoFrameCount/maxContext/chatRoomMaxReplies 消费点已随对话设置框拆入 ChatDialogs.kt

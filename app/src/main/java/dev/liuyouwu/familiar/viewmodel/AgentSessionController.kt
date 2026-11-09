@@ -90,8 +90,9 @@ internal data class PetSessionSnapshot(
 /**
  * 自 ChatViewModel 纯移动拆出（P5 T5）：Agent 新引擎运行时——会话挂载/事件桥/
  * T10 生产装配/五入口/startAgentChain 链编排/聊天室轮链。ChatViewModel 经构造
- * 注入依赖与 UI 状态回写通道（MutableStateFlow/VoiceController 等），
- * 公开方法与 StateFlow 由 VM 原签名委托，行为与拆分前逐行等价。
+ * 注入依赖与 UI 状态回写通道（审计 A5 起为 StreamingSink/StatsSink/DialogSink
+ * 三域接口 + VoiceController 等），公开方法与 StateFlow 由 VM 原签名委托，
+ * 行为与拆分前逐行等价。
  */
 internal class AgentSessionController(
     private val scope: CoroutineScope,
@@ -105,22 +106,13 @@ internal class AgentSessionController(
     val chainGuard: AgentChainGuard,
     private val voice: VoiceController,
     private val skillIdOf: (ConversationEntity) -> String,
-    // ===== UI 状态回写通道（自 ChatViewModel 构造注入）=====
-    private val error: MutableStateFlow<String?>,
-    private val isLoading: MutableStateFlow<Boolean>,
-    private val streamingText: MutableStateFlow<String>,
-    private val streamingReasoning: MutableStateFlow<String>,
-    private val familiarTypingName: MutableStateFlow<String?>,
-    private val tokenCount: MutableStateFlow<Int>,
-    private val tokensPerSecond: MutableStateFlow<Double>,
-    private val lastCacheHit: MutableStateFlow<Int?>,
-    /** 收线后的真实上下文占用（lastUsage.prompt+completion，token）；0=本会话尚无已上报用量 */
-    private val lastContextTokens: MutableStateFlow<Int>,
-    private val replyingTo: MutableStateFlow<ReplyTarget?>,
-    private val selectedAttachments: MutableStateFlow<List<AttachmentInfo>>,
+    // ===== UI 状态回写通道（审计 A5 Sink 化）：原 13 个 MutableStateFlow 构造参数
+    // 按写点域归并为三接口（流式呈现 6 / 用量 4 / 对话交互 3，成员见 StreamSinks.kt），
+    // ChatViewModel 实现并持流，写/读语义逐位等价（.value 访问点仅加域前缀）
+    private val streaming: StreamingSink,
+    private val stats: StatsSink,
+    private val dialog: DialogSink,
     private val autoReadEnabled: StateFlow<Boolean>,
-    private val searchStatus: MutableStateFlow<String?>,
-    private val familiarReveal: MutableStateFlow<Pair<Long, Int>?>,
     /** 工具确认闸门（审计 S2）：ChatViewModel 持有共享实例，经此透传 SkillHost 装配。 */
     private val toolGate: ToolGateKeeper,
 ) {
@@ -244,20 +236,20 @@ internal class AgentSessionController(
         sessionMirrorJob?.cancel()
         // 挂载即按会话现值重置上下文占用（跨会话防串）；有 lastUsage 的会话
         // 同步回填（StateFlow 现值直读），空闲顶栏「上下文 N tokens」不丢
-        lastContextTokens.value = 0
+        stats.lastContextTokens.value = 0
         if (session == null) {
             attachedConversationId = null
             attachedSkillId = null
             attachedHost = null
             // 卸载清镜像：后台旧会话仍可能在流式（事件不再被收集），残留文本会
             // 串进新会话的幽灵气泡
-            streamingText.value = ""
-            streamingReasoning.value = ""
-            familiarTypingName.value = null
+            streaming.streamingText.value = ""
+            streaming.streamingReasoning.value = ""
+            streaming.familiarTypingName.value = null
             return
         }
         session.events.value.lastUsage.takeIf { it.promptTokens > 0 }?.let { u ->
-            lastContextTokens.value = u.promptTokens + u.completionTokens
+            stats.lastContextTokens.value = u.promptTokens + u.completionTokens
         }
         sessionMirrorJob = scope.launch(Dispatchers.IO) {
             var firstEmission = true
@@ -267,9 +259,9 @@ internal class AgentSessionController(
                 if (st.streaming && !wasStreaming) streamStartMs = System.currentTimeMillis()
                 val settled = wasStreaming && !st.streaming
                 wasStreaming = st.streaming
-                streamingText.value = st.streamingText
-                streamingReasoning.value = st.streamingReasoning
-                familiarTypingName.value =
+                streaming.streamingText.value = st.streamingText
+                streaming.streamingReasoning.value = st.streamingReasoning
+                streaming.familiarTypingName.value =
                     if (st.streaming && attachedSkillId == dev.liuyouwu.familiar.skills.TypeInferer.FAMILIAR) {
                         dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
                             .personaOf(PetSkinStore.get(agentSettingsCache.petColor)).name
@@ -283,26 +275,26 @@ internal class AgentSessionController(
                 if (st.streaming) {
                     val count = st.streamingText.length + st.streamingReasoning.length
                     if (count > 0) {
-                        tokenCount.value = count
+                        stats.tokenCount.value = count
                         val elapsed = (System.currentTimeMillis() - streamStartMs) / 1000.0
-                        if (elapsed > 0.3) tokensPerSecond.value = count / elapsed
+                        if (elapsed > 0.3) stats.tokensPerSecond.value = count / elapsed
                     }
                 } else if (settled) {
                     val usage = st.lastUsage
                     if (usage.completionTokens > 0) {
-                        tokenCount.value = usage.completionTokens
+                        stats.tokenCount.value = usage.completionTokens
                         val elapsed = (System.currentTimeMillis() - streamStartMs) / 1000.0
-                        if (elapsed > 0.3) tokensPerSecond.value = usage.completionTokens / elapsed
+                        if (elapsed > 0.3) stats.tokensPerSecond.value = usage.completionTokens / elapsed
                     }
                     if (usage.promptTokens > 0) {
-                        lastContextTokens.value = usage.promptTokens + usage.completionTokens
+                        stats.lastContextTokens.value = usage.promptTokens + usage.completionTokens
                     }
                 }
                 // 错误并入 VM error 通道（T9 交接项）：下一 run 起点会话侧自清，
                 // VM 侧由新一轮发送前统一清空（旧链同款时序）。首次发射跳过——
                 // StateFlow 重挂即重放当前值，不跳会把终态旧错误在每次切回时重弹
                 // Snackbar（修复轮 Minor 3）；在飞错误由 agentJob 收线处置不漏
-                if (!firstEmission) st.lastError?.let { error.value = it }
+                if (!firstEmission) st.lastError?.let { dialog.error.value = it }
                 firstEmission = false
             }
         }
@@ -363,7 +355,7 @@ internal class AgentSessionController(
         // onHostCleared 另有兜底释放。
         scope.launch {
             dev.liuyouwu.familiar.FamiliarApp.inForeground.collect { foreground ->
-                syncBgWakeLock(streaming = !foreground && isLoading.value)
+                syncBgWakeLock(streaming = !foreground && streaming.isLoading.value)
             }
         }
     }
@@ -576,7 +568,7 @@ internal class AgentSessionController(
         // P-steer 生成中路由（spec §4.1）：打断只属停止按钮/聊天室圆桌/错配/装配竞态兜底。
         // **chatRoomRoundRoute 必须先于 steer 判定显式打断**（评审 N-P0：外层条件排除会让
         // 聊天室生成中发送完全丢失 stopGeneration——新旧两链并发/跨会话孤儿链，违反 D3）
-        if (isLoading.value) {
+        if (streaming.isLoading.value) {
             if (chatRoomRoundRoute(conversationId)) {
                 stopGeneration()   // 聊天室/圆桌：现状打断（D3 维持不动）
             } else {
@@ -591,10 +583,10 @@ internal class AgentSessionController(
                     // steer 路由：user 行在 steer 内即时落库并注入本 run 下一回合；
                     // 不置位 isLoading（原 run 拥有它，不动现链的流式/忙态）。
                     // Deferred = 引擎队列未开（行已落库），pendingFollowUp 交收线桥兜答（零丢失）
-                    val replyTarget0 = replyingTo.value
-                    replyingTo.value = null
-                    val attachments = selectedAttachments.value.toList()   // 先捕获后清空（launch 内读已清空值=空附件）
-                    if (selectedAttachments.value.isNotEmpty()) selectedAttachments.value = emptyList()
+                    val replyTarget0 = dialog.replyingTo.value
+                    dialog.replyingTo.value = null
+                    val attachments = dialog.selectedAttachments.value.toList()   // 先捕获后清空（launch 内读已清空值=空附件）
+                    if (dialog.selectedAttachments.value.isNotEmpty()) dialog.selectedAttachments.value = emptyList()
                     // 同步先置位闭写侧竞态（终审 F-1）：pendingFollowUp 的写侧（本处/
                     // queueFollowUp）原在 scope.launch 内，与 IO 线程的收线消费读、Main
                     // 线程的 stopGeneration 清零无次序保证——发送落在 run 末毫秒窗时消费
@@ -635,7 +627,7 @@ internal class AgentSessionController(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            error.value = e.message ?: "操作失败"
+                            dialog.error.value = e.message ?: "操作失败"
                         }
                     }
                     return
@@ -647,21 +639,21 @@ internal class AgentSessionController(
             }
         }
         // 同步置位：堵住入口守卫与 DB 读取之间的竞态窗口（对照 compactConversation 的修法）
-        isLoading.value = true
-        val attachments = selectedAttachments.value.toList()
+        streaming.isLoading.value = true
+        val attachments = dialog.selectedAttachments.value.toList()
         // 三路由：聊天室/圆桌挂载会话 → Orchestrator 回合（user 行先入库，打断语义
         // 同款：上面的 stopGeneration 内部 cancel 旧 agentJob 的链 + session.stop）；
         // 四类型挂载 → AgentSession；未挂载（装配在途/装配失败竞态、未知 skillId）→
         // 报错壳（旧链兜底已随 T5 删除）
         if (chatRoomRoundRoute(conversationId)) {
             // 引用目标随行捕获（旧链在 doSendChatRoom 内消费后清空，此处等价同步消费）
-            val replyTarget0 = replyingTo.value
-            replyingTo.value = null
+            val replyTarget0 = dialog.replyingTo.value
+            dialog.replyingTo.value = null
             // 附件即时清空：user 行由 appendRoomUserMessage 落库（入库失败=DB 已不可用，
             // 与四类型新链同口径）
-            if (attachments.isNotEmpty()) selectedAttachments.value = emptyList()
+            if (attachments.isNotEmpty()) dialog.selectedAttachments.value = emptyList()
             startAgentChain(conversationId, userChars = text.length) {
-                error.value = null
+                dialog.error.value = null
                 appendRoomUserMessage(conversationId, text, attachments, replyTarget0)
                 runChatRoomRound(conversationId)
                 true
@@ -671,13 +663,13 @@ internal class AgentSessionController(
         val session = sessionIfAttached(conversationId)
         if (session != null) {
             // 引用目标随行捕获（旧链在 doSend 内消费后清空，此处等价同步消费）
-            val replyTarget0 = replyingTo.value
-            replyingTo.value = null
+            val replyTarget0 = dialog.replyingTo.value
+            dialog.replyingTo.value = null
             // 附件即时清空：新链 user 行由 session.send 落库（入库失败=DB 已不可用，
             // 与旧链"入库成功后再清"的差别仅剩极端故障窗口）
-            if (attachments.isNotEmpty()) selectedAttachments.value = emptyList()
+            if (attachments.isNotEmpty()) dialog.selectedAttachments.value = emptyList()
             startAgentChain(conversationId, userChars = text.length) { s ->
-                error.value = null
+                dialog.error.value = null
                 s.send(
                     conversationId.toString(), text,
                     attachments = attachments.mapNotNull(::toCoreAttachment),
@@ -688,8 +680,8 @@ internal class AgentSessionController(
             return
         }
         // 报错壳：无旧链可走（T5 删）——附件保留供重试
-        error.value = "会话没准备好：请退出会话后重进再试"
-        isLoading.value = false
+        dialog.error.value = "会话没准备好：请退出会话后重进再试"
+        streaming.isLoading.value = false
     }
 
     /**
@@ -698,15 +690,15 @@ internal class AgentSessionController(
      * 未挂载降级普通 sendMessage（空闲时长按=普通发送，行为一致）。
      */
     fun queueFollowUp(conversationId: Long, text: String) {
-        if (!isLoading.value || chatRoomRoundRoute(conversationId)) { sendMessage(conversationId, text); return }
+        if (!streaming.isLoading.value || chatRoomRoundRoute(conversationId)) { sendMessage(conversationId, text); return }
         val mismatch = runningSession == null ||
             chainGuard.chainMeta?.conversationId != conversationId
         val session = sessionIfAttached(conversationId)
         if (mismatch || session == null) { sendMessage(conversationId, text); return }
-        val replyTarget0 = replyingTo.value
-        replyingTo.value = null
-        val attachments = selectedAttachments.value.toList()
-        if (selectedAttachments.value.isNotEmpty()) selectedAttachments.value = emptyList()
+        val replyTarget0 = dialog.replyingTo.value
+        dialog.replyingTo.value = null
+        val attachments = dialog.selectedAttachments.value.toList()
+        if (dialog.selectedAttachments.value.isNotEmpty()) dialog.selectedAttachments.value = emptyList()
         // 同步先置位闭写侧竞态（终审 F-1）：与 steer 路由同款——flag 置位提到 launch 前
         // （persistUser 仍在 launch 内），收线消费（IO 读）/停止清零（Main stopGeneration）
         // 与写侧获得 happens-before；期间被停止清零 → 行随后落库成孤儿（少兜答不丢行，
@@ -722,7 +714,7 @@ internal class AgentSessionController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error.value = e.message ?: "操作失败"
+                dialog.error.value = e.message ?: "操作失败"
             }
         }
     }
@@ -763,7 +755,7 @@ internal class AgentSessionController(
         val host = attachedHost?.takeIf { attachedConversationId == conversationId } ?: return
         val round = host.roundFor(conversation)
         if (round.roles.isEmpty()) {
-            error.value = "聊天室没有成员：先加角色"
+            dialog.error.value = "聊天室没有成员：先加角色"
             return
         }
         round.orchestrator.runRound(
@@ -818,11 +810,11 @@ internal class AgentSessionController(
                 // B2-L1：会话采样参数每链刷新（在设置快照之后、action 之前——
                 // 技能管理页/会话参数改动自下一条消息（新链）生效，spec §3.4）
                 engine.refreshSamplingCache(conversationId, skillRegistry)
-                tokenCount.value = 0
-                tokensPerSecond.value = 0.0
+                stats.tokenCount.value = 0
+                stats.tokensPerSecond.value = 0.0
                 // 新链无 SSE Usage 事件桥（SessionState.lastUsage 不区分"未上报"与 0），
                 // 命中率面板清 null 防旧链残留值跨链显示（修复轮 Minor 7 一并）
-                lastCacheHit.value = null
+                stats.lastCacheHit.value = null
                 if (!action(session)) return@launch
                 val final = session.events.first { !it.streaming }
                 if (chainGuard.stopEpoch != epochAtStart) return@launch   // 本链被停止/打断
@@ -856,7 +848,7 @@ internal class AgentSessionController(
                 ) {
                     voice.cancelRevealAnimation()   // 旧答案曝光/朗读不掐会与新 run 并行开口（spec §6 代价已登记）
                     consumedFollowUp = true
-                    isLoading.value = true
+                    streaming.isLoading.value = true
                     startAgentChain(followTarget, userChars = 0) { s ->
                         s.continueRun(followTarget.toString())
                         true
@@ -866,7 +858,7 @@ internal class AgentSessionController(
                 // 别的会话；行内气泡标记裁决为不落 spec §4.1 承诺——行本身可见于历史，另立批次）
                 val lastError = final.lastError
                 if (lastError != null) {
-                    error.value = lastError
+                    dialog.error.value = lastError
                 } else {
                     // 链级成功桥只余 chat/eli5 的 TTS：classroom 归拆条组逐段回调、
                     // chatroom/roundtable 归每角色 run 终态回调（P4 T4，均已在链中触发——
@@ -889,7 +881,7 @@ internal class AgentSessionController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error.value = dev.liuyouwu.familiar.util.ApiErrorHint.fromThrowable(e)
+                dialog.error.value = dev.liuyouwu.familiar.util.ApiErrorHint.fromThrowable(e)
             } finally {
                 // 停止权移交守卫（修复轮 Important 1）：**协程身份**判等，非 session
                 // 对象判等——同会话打断时新旧链共享同一 AgentSession（sessionFor 缓存），
@@ -918,7 +910,7 @@ internal class AgentSessionController(
         scope.launch(Dispatchers.IO) {
             // ① 等待谓词 = isLoading==false（守卫 :627 的释放点；streaming=false 早于它，
             //    用 streaming 做谓词会在窗口内被守卫静默丢弃——二轮 N1）
-            withTimeoutOrNull(5_000) { isLoading.first { !it } } ?: return@launch
+            withTimeoutOrNull(5_000) { streaming.isLoading.first { !it } } ?: return@launch
             // ② 挂载校验（二轮 N3）：切会话后 regenerateLastResponse 的报错壳会打进新会话
             if (attachedConversationId != conversationId) return@launch
             // ③ 目标核验：末行仍是目标 assistant 行（行 id 比对——用户新输入只追加行）；
@@ -947,10 +939,10 @@ internal class AgentSessionController(
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (agentJob != null && agentJob !== currentJob) return
         syncBgWakeLock(streaming = false)   // 链收线即释放（审计 P1-6 后台锁唯一收口）
-        streamingText.value = ""
-        streamingReasoning.value = ""
-        isLoading.value = false
-        familiarTypingName.value = null
+        streaming.streamingText.value = ""
+        streaming.streamingReasoning.value = ""
+        streaming.isLoading.value = false
+        streaming.familiarTypingName.value = null
     }
 
     private suspend fun resetStreamState() {
@@ -960,15 +952,15 @@ internal class AgentSessionController(
         // 表现为输入框不锁、停止键消失、可并发第二条流
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (streamJob != null && streamJob !== currentJob) return
-        searchStatus.value = null
-        streamingText.value = ""
-        streamingReasoning.value = ""
-        isLoading.value = false
-        lastCacheHit.value = null
+        streaming.searchStatus.value = null
+        streaming.streamingText.value = ""
+        streaming.streamingReasoning.value = ""
+        streaming.isLoading.value = false
+        stats.lastCacheHit.value = null
         // familiar 拟人节奏：打字指示与曝光态一并复位（reveal 置 null = 全曝光，
         // 与重进会话/进程重建的默认一致）
-        familiarTypingName.value = null
-        familiarReveal.value = null
+        streaming.familiarTypingName.value = null
+        streaming.familiarReveal.value = null
         syncBgWakeLock(streaming = false)   // 压缩流收线即释放（审计 P1-6）
     }
 
@@ -1010,39 +1002,39 @@ internal class AgentSessionController(
      * 不写回全局模型设置；UI 层把用户在对话框里选的模型传进来即可
      */
     fun regenerateLastResponse(conversationId: Long, modelOverride: String? = null) {
-        if (isLoading.value) return
+        if (streaming.isLoading.value) return
         if (chatRoomRoundRoute(conversationId)) {
-            error.value = "聊天室暂不支持重新生成"
+            dialog.error.value = "聊天室暂不支持重新生成"
             return
         }
         // 同步置位：堵住入口守卫与 DB 读取之间的竞态窗口（对照 compactConversation 的修法）
-        isLoading.value = true
+        streaming.isLoading.value = true
         if (sessionIfAttached(conversationId) != null) {
             startAgentChain(conversationId, userChars = 0) { s ->
                 val messages = chatRepository.getMessagesForConversation(conversationId).first()
                 if (messages.none { it.role == "assistant" }) {
-                    error.value = "没有可重新生成的回复"
+                    dialog.error.value = "没有可重新生成的回复"
                     return@startAgentChain false
                 }
                 if (messages.none { it.role == "user" }) {
-                    error.value = "会话已压缩，没有可重新生成的提问"
+                    dialog.error.value = "会话已压缩，没有可重新生成的提问"
                     return@startAgentChain false
                 }
-                error.value = null
+                dialog.error.value = null
                 s.regenerateLastTurn(conversationId.toString(), modelOverride)
                 true
             }
             return
         }
         // 报错壳：无旧链可走（T5 删）
-        error.value = "会话没准备好：请退出会话后重进再试"
-        isLoading.value = false
+        dialog.error.value = "会话没准备好：请退出会话后重进再试"
+        streaming.isLoading.value = false
     }
 
     fun continueGeneration(conversationId: Long) {
-        if (isLoading.value) return
+        if (streaming.isLoading.value) return
         // 同步置位：堵住入口守卫与 DB 读取之间的竞态窗口（对照 compactConversation 的修法）
-        isLoading.value = true
+        streaming.isLoading.value = true
         // 三路由：聊天室/圆桌挂载会话 → 以"请继续"触发下一回合（user 行先入库避免
         // 双插，旧链同语义）；四类型挂载 → session.continueRun（引擎侧剥 UI 标记后以
         // 现有历史续跑）；未挂载 → 报错壳（旧链变体已随 T5 删）
@@ -1050,7 +1042,7 @@ internal class AgentSessionController(
             startAgentChain(conversationId, userChars = 0) {
                 val history = agentStore.list(conversationId.toString())
                 if (history.none { it.role == Role.ASSISTANT }) return@startAgentChain false
-                error.value = null
+                dialog.error.value = null
                 appendRoomUserMessage(conversationId, "请继续", emptyList(), null)
                 runChatRoomRound(conversationId)
                 true
@@ -1061,21 +1053,21 @@ internal class AgentSessionController(
             startAgentChain(conversationId, userChars = 0) { s ->
                 val messages = chatRepository.getMessagesForConversation(conversationId).first()
                 if (messages.none { it.role == "assistant" }) return@startAgentChain false
-                error.value = null
+                dialog.error.value = null
                 s.continueRun(conversationId.toString())
                 true
             }
             return
         }
         // 报错壳：无旧链可走（T5 删）
-        error.value = "会话没准备好：请退出会话后重进再试"
-        isLoading.value = false
+        dialog.error.value = "会话没准备好：请退出会话后重进再试"
+        streaming.isLoading.value = false
     }
 
     fun editMessageAndTruncate(conversationId: Long, messageId: Long, newContent: String) {
-        if (isLoading.value) return
+        if (streaming.isLoading.value) return
         // 同步置位：堵住入口守卫与 DB 读取之间的竞态窗口（对照 compactConversation 的修法）
-        isLoading.value = true
+        streaming.isLoading.value = true
         // 三路由：聊天室/圆桌挂载会话 → store.replaceRange 截断替入新 user 行 +
         // Orchestrator 回合（spec §5.4：P4 后聊天室编辑走 replaceRange 通道；替代旧链
         // "deleteMessagesAfter+updateContent 截断事务 + 旧链重跑"——content 列单写改
@@ -1084,7 +1076,7 @@ internal class AgentSessionController(
         // （旧链变体已随 T5 删——不可挂载直接报错，原对话一字不动）
         if (chatRoomRoundRoute(conversationId)) {
             startAgentChain(conversationId, userChars = newContent.length) {
-                error.value = null
+                dialog.error.value = null
                 agentStore.replaceRange(
                     conversationId.toString(),
                     messageId.toString(),
@@ -1109,7 +1101,7 @@ internal class AgentSessionController(
         // 判定——不截断，原对话一字不动）
         if (sessionIfAttached(conversationId) != null) {
             startAgentChain(conversationId, userChars = newContent.length) { s ->
-                error.value = null
+                dialog.error.value = null
                 s.editAndResend(conversationId.toString(), messageId.toString(), newContent)
                 // 旧链编辑事务带 touch（列表排序刷新）；replaceRange 的写路径不含
                 // touch，此处补齐等价
@@ -1119,21 +1111,21 @@ internal class AgentSessionController(
             return
         }
         // 报错壳：无旧链可走（T5 删）——不截断，历史一字不动
-        error.value = "会话没准备好：请退出会话后重进再试"
-        isLoading.value = false
+        dialog.error.value = "会话没准备好：请退出会话后重进再试"
+        streaming.isLoading.value = false
     }
 
     fun compactConversation(conversationId: Long) {
-        if (isLoading.value) return
+        if (streaming.isLoading.value) return
         // 聊天室拒绝守卫（P4 T3 前置到公共入口，语义照抄旧链 compactConversationLegacyChatRoom）：
         // 多角色发言史压成单条摘要会丢 sender 盖章与回合结构——置 error 不动历史；
         // 旧变体随守卫失去调用方（T5 删本体）
         if (chatRoomRoundRoute(conversationId)) {
-            error.value = "聊天室不支持压缩对话"
+            dialog.error.value = "聊天室不支持压缩对话"
             return
         }
         // 同步置位：堵住入口守卫与 DB 读取之间的竞态窗口（期间发消息会被误删）
-        isLoading.value = true
+        streaming.isLoading.value = true
         // T10 双路由：四类型挂载会话 → session.compact（summarizer=loop 单 turn 摘要请求，
         // 指令文案照抄旧体，见 [compactSummarizer]；摘要行替换在引擎侧事务完成）；
         // 未挂载 → 报错壳（旧链原体已随 T5 删）。压缩后的容量面板随下次 run 收线
@@ -1147,16 +1139,16 @@ internal class AgentSessionController(
                     val messages = chatRepository.getMessagesForConversation(conversationId).first()
                     if (messages.size <= 2) {
                         // 不再静默：告知用户为何没有压缩（加载态由 finally 的 resetStreamState 复位）
-                        error.value = "对话消息较少，无需压缩"
+                        dialog.error.value = "对话消息较少，无需压缩"
                         return@launch
                     }
-                    error.value = null
+                    dialog.error.value = null
                     val session = sessionIfAttached(conversationId) ?: return@launch
                     session.compact(conversationId.toString())
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    error.value = "压缩失败：${e.toUserLine()}（原对话未改动）"
+                    dialog.error.value = "压缩失败：${e.toUserLine()}（原对话未改动）"
                 } finally {
                     resetStreamState()
                 }
@@ -1164,8 +1156,8 @@ internal class AgentSessionController(
             return
         }
         // 报错壳：无旧链可走（T5 删）
-        error.value = "会话没准备好：请退出会话后重进再试"
-        isLoading.value = false
+        dialog.error.value = "会话没准备好：请退出会话后重进再试"
+        streaming.isLoading.value = false
     }
 
     /** 宿主（ChatViewModel）销毁收口：原 onCleared 的新链段（顺序保持）。 */

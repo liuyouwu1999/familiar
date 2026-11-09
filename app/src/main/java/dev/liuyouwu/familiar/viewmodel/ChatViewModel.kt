@@ -34,6 +34,7 @@ import dev.liuyouwu.familiar.skills.profile.RoundtableSummaryTexts
 import dev.liuyouwu.familiar.skills.profile.SingleFlight
 import dev.liuyouwu.familiar.ui.model.ChatRoomParticipantUi
 import dev.liuyouwu.familiar.ui.model.MessageRenderModel
+import dev.liuyouwu.familiar.ui.model.MessageUi
 import dev.liuyouwu.familiar.ui.model.PersonaPresetUi
 import dev.liuyouwu.familiar.ui.model.UiMessage
 import dev.liuyouwu.familiar.data.repository.ChatRepository
@@ -116,8 +117,10 @@ data class ReplyTarget(
  * 由 AgentSession 经注入 RunMarkers 直写块列）。
  *
  * P5 T5：本体拆为 AgentSession/Export/Voice 三个 Controller + AgentEngine（配料），
- * 纯移动行为零变化；本类保留依赖装配、StateFlow 声明（经构造注入回写）、
- * familiar/设置域与公开面委托——**公开 API 签名不变**，ChatScreen 等调用点零改动。
+ * 纯移动行为零变化；本类保留依赖装配、StateFlow 声明（审计 A5 起经三域 Sink 回写）、
+ * familiar/设置域与公开面委托——公开 API 除审计 A5 显式改善外不变：碎片流公开面
+ * 聚合为 streamingState/streamStats 两流（T3.3 合并下沉 VM），getMessages 出口折
+ * MessageUi（Entity 出口清零），ChatScreen 消费点随收。
  */
 class ChatViewModel(
     application: Application,
@@ -148,15 +151,12 @@ class ChatViewModel(
         SkillRegistry.fromAssets(context.assets, "skills") { msg -> Log.w("SkillRegistry", msg) }
     }
 
-    // ===== Core streaming state =====
+    // ===== Core streaming state（审计 A5：私有流经三域 Sink 供 AgentSessionController
+    // 回写，公开面聚合为 streamingState/streamStats 两个 StateFlow——碎片流出口退役，
+    // 见「Agent 会话事件桥」段的聚合声明）=====
     private val _streamingText = MutableStateFlow("")
-    val streamingText: StateFlow<String> = _streamingText
-
     private val _streamingReasoning = MutableStateFlow("")
-    val streamingReasoning: StateFlow<String> = _streamingReasoning
-
     private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
 
     // familiar 拟人节奏：活跃接收中的打字指示（精灵名；null = 非熟悉会话或未在接收）
     private val _familiarTypingName = MutableStateFlow<String?>(null)
@@ -170,19 +170,15 @@ class ChatViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    // 生成用量四源（审计 A5：公开面聚合为 streamStats）
     private val _tokenCount = MutableStateFlow(0)
-    val tokenCount: StateFlow<Int> = _tokenCount
-
     private val _tokensPerSecond = MutableStateFlow(0.0)
-    val tokensPerSecond: StateFlow<Double> = _tokensPerSecond
 
     /** 最近一次请求的缓存命中率（百分比 0-100）；后端不支持用量统计时为 null */
     private val _lastCacheHit = MutableStateFlow<Int?>(null)
-    val lastCacheHit: StateFlow<Int?> = _lastCacheHit
 
     /** 收线后的真实上下文占用（prompt+completion，token）；空闲态顶栏显示源，0=尚无上报 */
     private val _lastContextTokens = MutableStateFlow(0)
-    val lastContextTokens: StateFlow<Int> = _lastContextTokens
 
     /** 搜索进行中的状态文案（"正在搜索：xxx"），null=不在搜索；驱动"生成中"指示行。
      *  旧链写点（doSendChatRoom/generateCharacterReply）已随 T5 删除——现恒 null，
@@ -255,6 +251,34 @@ class ChatViewModel(
     // ===== P5 T5 Controller 拆分（纯移动拆出，构造注入依赖与回写通道） =====
 
     /**
+     * 审计 A5 三域 Sink 实现：AgentSessionController 的 13 个 MutableStateFlow 回写
+     * 通道归并为三接口（流式呈现 6 / 用量 4 / 对话交互 3，成员与写点清单见
+     * StreamSinks.kt）——controller 经接口写/读同一批流，语义逐位等价。
+     * 声明须在 [agentSession] 之前（构造传参初始化序）。
+     */
+    private val streamingSink = object : StreamingSink {
+        override val isLoading = _isLoading
+        override val streamingText = _streamingText
+        override val streamingReasoning = _streamingReasoning
+        override val familiarTypingName = _familiarTypingName
+        override val familiarReveal = _familiarReveal
+        override val searchStatus = _searchStatus
+    }
+
+    private val statsSink = object : StatsSink {
+        override val tokenCount = _tokenCount
+        override val tokensPerSecond = _tokensPerSecond
+        override val lastCacheHit = _lastCacheHit
+        override val lastContextTokens = _lastContextTokens
+    }
+
+    private val dialogSink = object : DialogSink {
+        override val error = _error
+        override val replyingTo = _replyingTo
+        override val selectedAttachments = _selectedAttachments
+    }
+
+    /**
      * 工具确认闸门（审计 S2）：高危四件（http_get/剪贴板/open_url）执行前经用户
      * 确认。审批请求由 ChatScreen 订阅 [ToolGateKeeper.pendingApproval]（订阅计数
      * =前台监听者在场判定，无 UI 场景默认拒）；「总是允许」host 白名单持久化在
@@ -281,14 +305,8 @@ class ChatViewModel(
         skillRegistryProvider = { skillRegistry }, memoryStoreProvider = { memoryStore },
         chainGuard = chainGuard, voice = voice,
         skillIdOf = { skillIdOf(it) },
-        error = _error, isLoading = _isLoading,
-        streamingText = _streamingText, streamingReasoning = _streamingReasoning,
-        familiarTypingName = _familiarTypingName,
-        tokenCount = _tokenCount, tokensPerSecond = _tokensPerSecond, lastCacheHit = _lastCacheHit,
-        lastContextTokens = _lastContextTokens,
-        replyingTo = _replyingTo, selectedAttachments = _selectedAttachments,
-        autoReadEnabled = _autoReadEnabled, searchStatus = _searchStatus,
-        familiarReveal = _familiarReveal,
+        streaming = streamingSink, stats = statsSink, dialog = dialogSink,
+        autoReadEnabled = _autoReadEnabled,
         toolGate = toolGate,
     )
 
@@ -385,10 +403,47 @@ class ChatViewModel(
         viewModelScope.launch { settingsRepository.setKeepScreenOnEnabled(enabled) }
     }
 
-    // ===== Agent 会话事件桥（T5 拆入 AgentSessionController，公开流原样暴露） =====
+    // ===== Agent 会话事件桥（T5 拆入 AgentSessionController；审计 A5 公开面聚合） =====
 
-    /** 工具进度文案桥：SessionState.streamingToolStatus（"正在搜索：xxx"）；未挂载 = null。 */
-    val streamingToolStatus: StateFlow<String?> get() = agentSession.streamingToolStatus
+    // T3.3 下沉：原 ChatScreen 侧 remember{combine(四流)} 移入 VM——公开面从碎片流
+    // （isLoading/streamingText/streamingReasoning/streamingToolStatus 等 8 条）收敛为
+    // streamingState/streamStats 两个聚合 StateFlow。initialValue 取各流现值——首帧
+    // 与 ChatScreen 侧合并帧等价，不闪过渡态。
+
+    /** 流式状态聚合：忙态×正文×思考段×工具进度文案（最后者为 controller 派生流）。 */
+    val streamingState: StateFlow<StreamingState> = combine(
+        _isLoading, _streamingText, _streamingReasoning, agentSession.streamingToolStatus,
+    ) { isStreaming, text, reasoning, toolStatus ->
+        StreamingState(isStreaming, text, reasoning, toolStatus)
+    }.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000),
+        StreamingState(
+            isStreaming = _isLoading.value,
+            text = _streamingText.value,
+            reasoning = _streamingReasoning.value,
+            toolStatus = agentSession.streamingToolStatus.value,
+        ),
+    )
+
+    /** 生成用量聚合：>0 判定在合并处转 nullable（与原各 UI 位 `> 0` 判定同口径）。 */
+    val streamStats: StateFlow<StreamStats> = combine(
+        _tokensPerSecond, _lastContextTokens, _tokenCount, _lastCacheHit,
+    ) { tps, lastContextTokens, tokenCount, lastCacheHit ->
+        StreamStats(
+            tps = tps.takeIf { it > 0.0 },
+            promptTokens = lastContextTokens.takeIf { it > 0 },
+            completionTokens = tokenCount.takeIf { it > 0 },
+            cachedTokens = lastCacheHit,
+        )
+    }.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000),
+        StreamStats(
+            tps = _tokensPerSecond.value.takeIf { it > 0.0 },
+            promptTokens = _lastContextTokens.value.takeIf { it > 0 },
+            completionTokens = _tokenCount.value.takeIf { it > 0 },
+            cachedTokens = _lastCacheHit.value,
+        ),
+    )
 
     /** 流式发送者桥（P4 T4）：流式中暴露聊天室/圆桌角色 run 的盖章位；间隙归 null。 */
     val streamingSender: StateFlow<SenderInfo?> get() = agentSession.streamingSender
@@ -615,8 +670,13 @@ class ChatViewModel(
     /** 朗读/停止朗读最后一条 AI 回复（实现见 [VoiceController.toggleSpeakLastReply]）。 */
     fun toggleSpeakLastReply(conversationId: Long) = voice.toggleSpeakLastReply(conversationId)
 
-    fun getMessages(conversationId: Long): StateFlow<List<MessageEntity>> {
+    /**
+     * 消息实体流（审计 A5：最后一处 Entity 出口清零——出口折 [MessageUi] 投影，
+     * mapper 在 VM 边界调用；当前无 UI 消费点，公开面保留等价搬运不改签名形状）。
+     */
+    fun getMessages(conversationId: Long): StateFlow<List<MessageUi>> {
         return chatRepository.getMessagesForConversation(conversationId)
+            .map { rows -> rows.map { it.toUi() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     }
 
