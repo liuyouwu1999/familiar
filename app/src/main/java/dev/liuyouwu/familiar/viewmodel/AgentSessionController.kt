@@ -90,7 +90,7 @@ internal data class PetSessionSnapshot(
 /**
  * 自 ChatViewModel 纯移动拆出（P5 T5）：Agent 新引擎运行时——会话挂载/事件桥/
  * T10 生产装配/五入口/startAgentChain 链编排/聊天室轮链。ChatViewModel 经构造
- * 注入依赖与 UI 状态回写通道（MutableStateFlow/ wakeLock/VoiceController 等），
+ * 注入依赖与 UI 状态回写通道（MutableStateFlow/VoiceController 等），
  * 公开方法与 StateFlow 由 VM 原签名委托，行为与拆分前逐行等价。
  */
 internal class AgentSessionController(
@@ -102,7 +102,6 @@ internal class AgentSessionController(
     // 惰性数据源经供应商注入（VM 侧 by lazy 语义保持：不在控制器构造期触达）
     private val skillRegistryProvider: () -> SkillRegistry,
     private val memoryStoreProvider: () -> FamiliarMemoryStore,
-    private val wakeLock: PowerManager.WakeLock,
     val chainGuard: AgentChainGuard,
     private val voice: VoiceController,
     private val skillIdOf: (ConversationEntity) -> String,
@@ -128,6 +127,45 @@ internal class AgentSessionController(
 
     private val skillRegistry: SkillRegistry by lazy(skillRegistryProvider)
     private val memoryStore: FamiliarMemoryStore by lazy(memoryStoreProvider)
+
+    // ===== 后台续流唤醒锁（审计 P1-6）=====
+    // 旧亮屏唤醒锁（废弃 API，且把整条链的熄屏节奏绑死在 app 上）已随
+    // ChatViewModel 构造区删除：前台保屏改 ChatScreen 的 keepScreenOn（设置可关）；
+    // 这里只剩后台半边——仅「app 在后台 && 生成进行中」持 PARTIAL 锁保 CPU 续流
+    // （切后台屏灭、token 继续涨），回前台即释放（前台交给 keepScreenOn）。
+    private val powerManager by lazy {
+        context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
+    }
+
+    /** 惰性创建的单例 PARTIAL 锁（acquire/release 引用计数，[syncBgWakeLock] 持 isHeld 守卫）。 */
+    @Volatile private var bgWakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * 唤醒锁保活上限（审计 P1-6 自 startAgentChain 内联表达式具名提取，防再膨胀时
+     * 两处漂移）：聊天室/圆桌一回合最多六个角色 run（各含搜索），10 分钟上限可能
+     * 中途到期、熄屏卡流——回合类型放宽到 30 分钟；其余单 run 链维持 10 分钟。
+     * 判定式按现场 skillId 比较（TypeInferer 常量，非 SessionMode 枚举）。
+     */
+    private fun wakeLockTimeoutMs(skillId: String): Long =
+        if (skillId == dev.liuyouwu.familiar.skills.TypeInferer.CHATROOM ||
+            skillId == dev.liuyouwu.familiar.skills.TypeInferer.ROUNDTABLE
+        ) 30 * 60 * 1000L else 10 * 60 * 1000L
+
+    /**
+     * 后台保活锁维护（审计 P1-6 唯一写入口）：streaming && app 在后台 → acquire
+     * （不重复持锁）；否则（前台、链收线、停止、宿主销毁）→ release。到期只是
+     * 保活上限，链完成/停止照常即时释放，不等到期。
+     */
+    private fun syncBgWakeLock(streaming: Boolean, timeoutMs: Long = wakeLockTimeoutMs(chainGuard.chainMeta?.skillId ?: "")) {
+        if (streaming && !dev.liuyouwu.familiar.FamiliarApp.inForeground.value) {
+            val lock = bgWakeLock ?: powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK, "familiar:chat_bg_stream"
+            ).also { bgWakeLock = it }
+            if (!lock.isHeld) lock.acquire(timeoutMs)
+        } else {
+            bgWakeLock?.takeIf { it.isHeld }?.release()
+        }
+    }
 
     // ===== Agent 新引擎运行时（Agent 内核 P3 T10） =====
     // 六类型的 run/回合编排协程：入口同步置位 [isLoading] 后由 [startAgentChain]
@@ -318,6 +356,15 @@ internal class AgentSessionController(
                     // manager 侧（单台错误不外溢），此处不需 try。
                     McpToolManager.refresh(servers, enabled)
                 }
+        }
+        // ===== 前后台切换 × 后台续流锁（审计 P1-6）：切后台时生成仍在跑 → 持锁续流
+        // （isLoading = 链/压缩共用的忙态，恰为旧锁覆盖面）；回前台立即释放——前台
+        // 保屏归 ChatScreen 的 keepScreenOn，锁不该越权抬功耗。收集随宿主 scope 存活，
+        // onHostCleared 另有兜底释放。
+        scope.launch {
+            dev.liuyouwu.familiar.FamiliarApp.inForeground.collect { foreground ->
+                syncBgWakeLock(streaming = !foreground && isLoading.value)
+            }
         }
     }
 
@@ -762,15 +809,11 @@ internal class AgentSessionController(
         runningSession = session
         agentJob = scope.launch(Dispatchers.IO) {
             try {
-                // 唤醒锁上限按 skill 类型放宽（P4 终审 Minor-5 预防性修正）：聊天室/
-                // 圆桌一回合最多六个角色 run（各含搜索），10 分钟上限可能中途到期、
-                // 屏幕熄灭卡流——回合类型放宽到 30 分钟；其余单 run 链维持 10 分钟。
-                // 到期只是保活上限，链完成/停止照常走 finally 即时释放，不等到期。
-                val wakeLockTimeoutMs =
-                    if (skillId == dev.liuyouwu.familiar.skills.TypeInferer.CHATROOM ||
-                        skillId == dev.liuyouwu.familiar.skills.TypeInferer.ROUNDTABLE
-                    ) 30 * 60 * 1000L else 10 * 60 * 1000L
-                wakeLock.acquire(wakeLockTimeoutMs)
+                // 后台续流锁（审计 P1-6）：仅 app 已在后台起链才持 PARTIAL 锁（上限按
+                // skill 类型放宽的具名常量见 [wakeLockTimeoutMs]；到期只是保活上限，
+                // 链完成/停止照常走收线复位即时释放，不等到期）。前台起链不持锁——
+                // 保屏由 ChatScreen keepScreenOn 负责，回前台也经 inForeground 收集器释放
+                syncBgWakeLock(streaming = true, timeoutMs = wakeLockTimeoutMs(skillId))
                 engine.refreshAgentSettingsCache()
                 // B2-L1：会话采样参数每链刷新（在设置快照之后、action 之前——
                 // 技能管理页/会话参数改动自下一条消息（新链）生效，spec §3.4）
@@ -903,7 +946,7 @@ internal class AgentSessionController(
     private suspend fun resetAgentStreamState() {
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (agentJob != null && agentJob !== currentJob) return
-        if (wakeLock.isHeld) wakeLock.release()
+        syncBgWakeLock(streaming = false)   // 链收线即释放（审计 P1-6 后台锁唯一收口）
         streamingText.value = ""
         streamingReasoning.value = ""
         isLoading.value = false
@@ -926,7 +969,7 @@ internal class AgentSessionController(
         // 与重进会话/进程重建的默认一致）
         familiarTypingName.value = null
         familiarReveal.value = null
-        if (wakeLock.isHeld) wakeLock.release()
+        syncBgWakeLock(streaming = false)   // 压缩流收线即释放（审计 P1-6）
     }
 
     fun stopGeneration() {
@@ -1127,7 +1170,7 @@ internal class AgentSessionController(
 
     /** 宿主（ChatViewModel）销毁收口：原 onCleared 的新链段（顺序保持）。 */
     fun onHostCleared() {
-        if (wakeLock.isHeld) wakeLock.release()
+        syncBgWakeLock(streaming = false)   // 宿主销毁兜底释放（审计 P1-6）
         streamJob?.cancel()
         // 新链（T10）：先停链（续讲 gap/工具协程随 chain.scope 取消）再收编排协程；
         // hooks 宿主 scope 一并收口（切段/TS 落列的尾写在 VM 死亡后不再有意义）

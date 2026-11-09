@@ -73,6 +73,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,6 +90,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -246,6 +248,17 @@ fun ChatScreen(
     // Voice input state
     val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
     val voiceResult by viewModel.voiceResult.collectAsStateWithLifecycle()
+
+    // 生成保屏（审计 P1-6，替代废弃亮屏唤醒锁的前台半边）：流式生成中
+    // 且设置开（默认开）→ 窗口 keepScreenOn；随组合/开关翻转自动清理（onDispose 置 false），
+    // 离屏或收线交还系统熄屏节奏。后台半边由 AgentSessionController 的 PARTIAL 锁负责
+    val keepScreenOnEnabled by viewModel.keepScreenOnEnabled.collectAsStateWithLifecycle()
+    val isStreaming = isLoading
+    val keepView = LocalView.current   // LocalView.current 是 @Composable 读——effect 体外取
+    DisposableEffect(isStreaming && keepScreenOnEnabled) {
+        keepView.keepScreenOn = isStreaming && keepScreenOnEnabled
+        onDispose { keepView.keepScreenOn = false }
+    }
 
     // 草稿与对话框开关全部 rememberSaveable：旋转/进程重建不丢输入（审计 §1-5）
     var inputText by rememberSaveable { mutableStateOf("") }

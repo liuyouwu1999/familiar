@@ -85,6 +85,8 @@ class SettingsRepository(private val context: Context) {
         private val KEY_WEB_SEARCH_ENABLED = booleanPreferencesKey("web_search_enabled")
         // 请求诊断转储（审计 S4）：last_request.json 明文落盘开关，默认关
         private val KEY_DIAG_DUMP_ENABLED = booleanPreferencesKey("diag_dump_enabled")
+        // 生成保屏（审计 P1-6）：前台流式生成期间窗口 keepScreenOn 开关，默认开
+        private val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
 
         // 工具确认闸门白名单（审计 S2）：http_get/open_url「总是允许」的 host 集合。
         // DataStore 原生 Set<String>（stringSetPreferencesKey，初始空）——值为纯字符串
@@ -597,6 +599,20 @@ class SettingsRepository(private val context: Context) {
     suspend fun setDiagDumpEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_DIAG_DUMP_ENABLED] = enabled
+        }
+    }
+
+    /** 生成保屏（审计 P1-6 替代废弃的亮屏唤醒锁）：true = 前台流式生成
+     *  期间窗口 keepScreenOn（FLAG_KEEP_SCREEN_ON，随组合自动清理）。默认开——长生成
+     *  中途熄屏是明确伤害体验的行为；关掉则交还系统熄屏节奏（后台续流另有 PARTIAL
+     *  锁兜底，不受此开关影响） */
+    val keepScreenOnEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_KEEP_SCREEN_ON] ?: true
+    }
+
+    suspend fun setKeepScreenOnEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_KEEP_SCREEN_ON] = enabled
         }
     }
 

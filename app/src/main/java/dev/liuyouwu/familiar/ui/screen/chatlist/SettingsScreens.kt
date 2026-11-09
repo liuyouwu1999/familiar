@@ -729,6 +729,29 @@ internal fun SettingsDialog(
                         )
                     }
                 }
+                // 生成保屏（审计 P1-6）：前台流式生成期间不熄屏（keepScreenOn，随组合
+                // 自动清理），默认开；后台续流由 PARTIAL 唤醒锁负责、不受此开关影响
+                item {
+                    Spacer(modifier = Modifier.size(16.dp))
+                    val keepScreenOnEnabled by chatViewModel.keepScreenOnEnabled.collectAsStateWithLifecycle()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("生成时保持屏幕常亮", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "前台生成期间不自动熄屏；关闭后交还系统熄屏节奏",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                        }
+                        Switch(
+                            checked = keepScreenOnEnabled,
+                            onCheckedChange = { chatViewModel.setKeepScreenOnEnabled(it) }
+                        )
+                    }
+                }
                 // 隐私说明
                 item {
                     Text(

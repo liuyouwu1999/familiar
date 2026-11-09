@@ -2,7 +2,6 @@ package dev.liuyouwu.familiar.viewmodel
 
 import android.app.Application
 import android.net.Uri
-import android.os.PowerManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -249,11 +248,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .getAllPresets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Wake lock: keep screen on during long streaming
-    private val wakeLock =
-        (context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager)
-            .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "familiar:chat_stream")
-
     // ===== P5 T5 Controller 拆分（纯移动拆出，构造注入依赖与回写通道） =====
 
     /**
@@ -281,7 +275,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val agentSession = AgentSessionController(
         viewModelScope, context, db, chatRepository, settingsRepository,
         skillRegistryProvider = { skillRegistry }, memoryStoreProvider = { memoryStore },
-        wakeLock = wakeLock, chainGuard = chainGuard, voice = voice,
+        chainGuard = chainGuard, voice = voice,
         skillIdOf = { skillIdOf(it) },
         error = _error, isLoading = _isLoading,
         streamingText = _streamingText, streamingReasoning = _streamingReasoning,
@@ -376,6 +370,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDiagDumpEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setDiagDumpEnabled(enabled) }
+    }
+
+    /** 生成保屏（审计 P1-6）：前台流式生成期间 ChatScreen keepScreenOn 的设置源，
+     *  默认开；替代已删的废弃亮屏唤醒锁前台路径 */
+    val keepScreenOnEnabled: StateFlow<Boolean> = settingsRepository.keepScreenOnEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setKeepScreenOnEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setKeepScreenOnEnabled(enabled) }
     }
 
     // ===== Agent 会话事件桥（T5 拆入 AgentSessionController，公开流原样暴露） =====
