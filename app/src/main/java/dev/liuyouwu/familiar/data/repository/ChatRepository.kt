@@ -32,9 +32,6 @@ class ChatRepository(
     fun getMessagesForConversation(conversationId: Long): Flow<List<MessageEntity>> =
         messageDao.getMessagesForConversation(conversationId)
 
-    fun getAllMessages(): Flow<List<MessageEntity>> =
-        messageDao.getAllMessages()
-
     /** 会话列表预览/搜索用轻量流（不含 base64 大字段） */
     fun getAllMessagePreviews(): Flow<List<dev.liuyouwu.familiar.data.local.MessagePreview>> =
         messageDao.getAllMessagePreviews()
