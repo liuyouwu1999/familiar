@@ -495,12 +495,25 @@ fun ChatScreen(
         if (userCount > lastUserMsgCount) { lastUserMsgCount = userCount; autoScroll = true }
     }
 
-    // familiarReveal/幽灵气泡加入键组：分段曝光推进、流式起泡时同样贴底
-    // （非 familiar 会话 reveal 恒 null，行为不变）
-    LaunchedEffect(uiMessages.size, isLoading, streamingText, streamingReasoning, autoScroll, familiarReveal) {
-        if (autoScroll) {
-            val total = listState.layoutInfo.totalItemsCount
-            if (total > 0) listState.scrollToItem(total - 1)
+    // 自动滚动（审计 P4）：layoutInfo 贴底跟随——流式文本/思考/分段曝光不再作为
+    // key（协程不再每节流帧重启）。snapshotFlow 派生（贴底性, 总数, 末项底边）：
+    // 流式增长只涨 ghost 气泡高度，index 与 totalItemsCount 均不变，须靠末项底边
+    // 值变化驱动重发（Pair 版派生值会被 snapshotFlow 内置 distinctUntilChanged
+    // 吞掉——贴底后首帧起即停跟，冒烟态 1 不成立）；userDragged 让位期间不滚，
+    // 避免拖拽帧自身触发 emission 被逐帧拽回
+    LaunchedEffect(autoScroll) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            Triple(
+                last != null && last.index == info.totalItemsCount - 1,
+                info.totalItemsCount,
+                last?.let { it.offset + it.size } ?: 0
+            )
+        }.collect { (atBottom, total, _) ->
+            if (autoScroll && atBottom && total > 0 && !userDragged) {
+                listState.scrollToItem(total - 1)
+            }
         }
     }
 
