@@ -109,62 +109,6 @@ private data class LazyAttachmentUi(
 )
 
 /**
- * Content segment for stable streaming rendering.
- * Tables are rendered as code blocks during streaming to avoid layout jumps.
- */
-private sealed class ContentSegment {
-    data class Markdown(val content: String) : ContentSegment()
-    data class Table(val content: String) : ContentSegment()
-}
-
-/**
- * Split content into markdown and table segments by detecting |...| lines.
- * During streaming, tables are isolated so they can be rendered as stable code blocks.
- */
-private fun splitByTables(content: String): List<ContentSegment> {
-    val segments = mutableListOf<ContentSegment>()
-    val lines = content.split("\n")
-
-    var currentMarkdown = StringBuilder()
-    var currentTable = StringBuilder()
-    var inTable = false
-
-    for (line in lines) {
-        val trimmed = line.trim()
-        val isTableLine = trimmed.startsWith("|") && trimmed.count { it == '|' } >= 2
-
-        if (isTableLine) {
-            if (!inTable) {
-                if (currentMarkdown.isNotEmpty()) {
-                    segments.add(ContentSegment.Markdown(currentMarkdown.toString().trimEnd('\n')))
-                    currentMarkdown = StringBuilder()
-                }
-                inTable = true
-            }
-            if (currentTable.isNotEmpty()) currentTable.append("\n")
-            currentTable.append(line)
-        } else {
-            if (inTable) {
-                segments.add(ContentSegment.Table(currentTable.toString()))
-                currentTable = StringBuilder()
-                inTable = false
-            }
-            if (currentMarkdown.isNotEmpty()) currentMarkdown.append("\n")
-            currentMarkdown.append(line)
-        }
-    }
-
-    if (inTable && currentTable.isNotEmpty()) {
-        segments.add(ContentSegment.Table(currentTable.toString()))
-    }
-    if (currentMarkdown.isNotEmpty()) {
-        segments.add(ContentSegment.Markdown(currentMarkdown.toString().trimEnd('\n')))
-    }
-
-    return segments
-}
-
-/**
  * 旧聊天链兼容重载（Agent 内核 P3 Task 8）：MessageEntity 调用形状原样保留，
  * 内部经 [MessageRenderModel.fromEntity] 折成 [UiMessage] 委托新渲染核心。
  * ChatScreen（T9 改造前）继续走此入口，行为不变。
@@ -673,46 +617,24 @@ fun MessageBubble(
                                 )
                             }
                         } else if (isStreaming) {
-                            // Streaming mode: render tables as code blocks to avoid jumping
-                            val segments = remember(displayContent) { splitByTables(displayContent) }
-                            segments.forEach { segment ->
-                                when (segment) {
-                                    is ContentSegment.Markdown -> {
-                                        MarkdownText(
-                                            markdown = normalizeMarkdown(segment.content),
-                                            style = MaterialTheme.typography.bodyLarge.copy(
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            ),
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
-                                    is ContentSegment.Table -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp)
-                                                .background(
-                                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                                )
-                                                .border(1.dp, WoodBorder)
-                                                .padding(8.dp)
-                                        ) {
-                                            Text(
-                                                text = segment.content,
-                                                style = MaterialTheme.typography.bodySmall.copy(
-                                                    fontFamily = FontFamily.Monospace,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                ),
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            // 流式降级（审计 P1-5）：正文纯文本渲染，不做 Markdown/LaTeX/
+                            // 表格转换——每帧全量正文过 4+6 个 Regex + 重建 48+70 项映射表
+                            // 是流式卡顿根因；收线（isStreaming=false）自动回落完整渲染。
+                            // 聊天室/圆桌角色流式（streamingSender 非空）同走此分支，
+                            // 流式期纯文本是 spec 明示的预期视觉差异，不是回归。
+                            // trimEnd()：Markdown 渲染会吞尾部空白，纯文本对齐该行为防尾行抖动。
+                            Text(
+                                text = displayContent.trimEnd(),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             // Normal mode (not streaming): show markdown with LaTeX support
+                            // remember(displayContent)（审计 P1-5）：同正文重组合不重跑
+                            // normalizeMarkdown 的全量 Regex 替换，仅内容变化时重算
+                            val markdown = remember(displayContent) { normalizeMarkdown(displayContent) }
                             MarkdownText(
-                                markdown = normalizeMarkdown(displayContent),
+                                markdown = markdown,
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 ),
@@ -1042,6 +964,24 @@ private fun ActionButton(
     }
 }
 
+// ---- Markdown/LaTeX 渲染常量（审计 P1-5）----
+// 顶层化前这些 Regex 在 normalizeMarkdown/latexToUnicode 每次调用时重新编译、
+// 两张映射表每次重建（48+70 项、约 118 次 replace）——流式期间每帧对全量正文
+// 裸跑是长回答卡顿的根因。提为文件顶层 val 后只构建一次（Regex 线程安全，
+// JVM 类初始化保证并发可见）。映射表为 internal 供 MarkdownPerfTest 引用相等断言。
+
+/** 块级 LaTeX `$$...$$` */
+private val BLOCK_LATEX_REGEX = Regex("""\$\$([\s\S]+?)\$\$""")
+
+/** 行内 LaTeX `$...$`（负向环视防 `$$` 误配） */
+private val INLINE_LATEX_REGEX = Regex("""(?<!\$)\$(?!\$)([^\$\n]+?)(?<!\$)\$(?!\$)""")
+
+/** `**粗体**` → `<b>` */
+private val BOLD_ASTERISK_REGEX = Regex("""\*\*(.+?)\*\*""")
+
+/** `__粗体__` → `<b>` */
+private val BOLD_UNDERSCORE_REGEX = Regex("""__(.+?)__""")
+
 /**
  * Normalize markdown for display:
  * - Convert **text** to <b>text</b> for reliable bold rendering
@@ -1057,29 +997,91 @@ private fun normalizeMarkdown(text: String): String {
     result = result.replace("\u200B", "").replace("\u200C", "").replace("\uFEFF", "")
 
     // Handle block LaTeX $$...$$ -> convert to Unicode
-    result = result.replace(Regex("""\$\$([\s\S]+?)\$\$""")) { match ->
+    result = result.replace(BLOCK_LATEX_REGEX) { match ->
         val formula = match.groupValues[1].trim()
         latexToUnicode(formula)
     }
 
     // Handle inline LaTeX $...$ -> convert to Unicode
-    result = result.replace(Regex("""(?<!\$)\$(?!\$)([^\$\n]+?)(?<!\$)\$(?!\$)""")) { match ->
+    result = result.replace(INLINE_LATEX_REGEX) { match ->
         val formula = match.groupValues[1]
         latexToUnicode(formula)
     }
 
     // Convert **bold** to <b>bold</b>
-    result = result.replace(Regex("""\*\*(.+?)\*\*""")) { match ->
+    result = result.replace(BOLD_ASTERISK_REGEX) { match ->
         "<b>${match.groupValues[1]}</b>"
     }
 
     // Convert __bold__ to <b>
-    result = result.replace(Regex("""__(.+?)__""")) { match ->
+    result = result.replace(BOLD_UNDERSCORE_REGEX) { match ->
         "<b>${match.groupValues[1]}</b>"
     }
 
     return result
 }
+
+/** LaTeX 希腊字母映射（internal 供 MarkdownPerfTest 引用相等断言——审计 P1-5 防回退） */
+internal val LATEX_GREEK_LETTERS: Map<String, String> = mapOf(
+    "\\alpha" to "α", "\\beta" to "β", "\\gamma" to "γ", "\\delta" to "δ",
+    "\\epsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η", "\\theta" to "θ",
+    "\\iota" to "ι", "\\kappa" to "κ", "\\lambda" to "λ", "\\mu" to "μ",
+    "\\nu" to "ν", "\\xi" to "ξ", "\\omicron" to "ο", "\\pi" to "π",
+    "\\rho" to "ρ", "\\sigma" to "σ", "\\tau" to "τ", "\\upsilon" to "υ",
+    "\\phi" to "φ", "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω",
+    "\\Alpha" to "Α", "\\Beta" to "Β", "\\Gamma" to "Γ", "\\Delta" to "Δ",
+    "\\Epsilon" to "Ε", "\\Zeta" to "Ζ", "\\Eta" to "Η", "\\Theta" to "Θ",
+    "\\Iota" to "Ι", "\\Kappa" to "Κ", "\\Lambda" to "Λ", "\\Mu" to "Μ",
+    "\\Nu" to "Ν", "\\Xi" to "Ξ", "\\Omicron" to "Ο", "\\Pi" to "Π",
+    "\\Rho" to "Ρ", "\\Sigma" to "Σ", "\\Tau" to "Τ", "\\Upsilon" to "Υ",
+    "\\Phi" to "Φ", "\\Chi" to "Χ", "\\Psi" to "Ψ", "\\Omega" to "Ω"
+)
+
+/** LaTeX 数学算符/符号映射（internal 供 MarkdownPerfTest 引用相等断言——审计 P1-5 防回退） */
+internal val LATEX_MATH_SYMBOLS: Map<String, String> = mapOf(
+    "\\times" to "×", "\\div" to "÷", "\\pm" to "±", "\\mp" to "∓",
+    "\\cdot" to "·", "\\ast" to "∗", "\\star" to "★",
+    "\\leq" to "≤", "\\geq" to "≥", "\\neq" to "≠", "\\approx" to "≈",
+    "\\equiv" to "≡", "\\sim" to "∼", "\\propto" to "∝",
+    "\\in" to "∈", "\\notin" to "∉", "\\subset" to "⊂", "\\supset" to "⊃",
+    "\\subseteq" to "⊆", "\\supseteq" to "⊇", "\\cup" to "∪", "\\cap" to "∩",
+    "\\emptyset" to "∅", "\\infty" to "∞",
+    "\\sum" to "Σ", "\\prod" to "Π", "\\int" to "∫", "\\oint" to "∮",
+    "\\partial" to "∂", "\\nabla" to "∇", "\\forall" to "∀", "\\exists" to "∃",
+    "\\rightarrow" to "→", "\\leftarrow" to "←", "\\Rightarrow" to "⇒",
+    "\\Leftarrow" to "⇐", "\\leftrightarrow" to "↔", "\\Leftrightarrow" to "⇔",
+    "\\therefore" to "∴", "\\because" to "∵",
+    "\\sqrt" to "√", "\\cbrt" to "∛",
+    "\\degree" to "°", "\\percent" to "%", "\\permil" to "‰",
+    "\\prime" to "′", "\\doubleprime" to "″",
+    "\\angle" to "∠", "\\perp" to "⊥", "\\parallel" to "∥",
+    "\\triangle" to "△", "\\square" to "□", "\\circ" to "○",
+    "\\bullet" to "•", "\\diamond" to "◇",
+    "\\hbar" to "ℏ", "\\ell" to "ℓ",
+    "\\Re" to "ℜ", "\\Im" to "ℑ",
+    "\\aleph" to "ℵ", "\\wp" to "℘",
+    "\\land" to "∧", "\\lor" to "∨", "\\neg" to "¬",
+    "\\oplus" to "⊕", "\\otimes" to "⊗", "\\odot" to "⊙",
+    "\\le" to "≤", "\\ge" to "≥", "\\ne" to "≠"
+)
+
+/** `\frac{a}{b}` → `a/b` */
+private val FRAC_REGEX = Regex("""\\frac\{([^}]*)\}\{([^}]*)\}""")
+
+/** `\sqrt{x}` → `√x` */
+private val SQRT_BRACE_REGEX = Regex("""\\sqrt\{([^}]*)\}""")
+
+/** 上标 `^{...}` */
+private val SUPERSCRIPT_BRACE_REGEX = Regex("""\^\{([^}]*)\}""")
+
+/** 上标单字符 `^x`（数字/四则/括号/等号） */
+private val SUPERSCRIPT_CHAR_REGEX = Regex("""\^([0-9+\-()=])""")
+
+/** 下标 `_{...}` */
+private val SUBSCRIPT_BRACE_REGEX = Regex("""_\{([^}]*)\}""")
+
+/** 下标单字符 `_x`（数字/四则/括号/等号） */
+private val SUBSCRIPT_CHAR_REGEX = Regex("""_([0-9+\-()=])""")
 
 /**
  * Convert LaTeX math notation to Unicode mathematical symbols
@@ -1087,83 +1089,39 @@ private fun normalizeMarkdown(text: String): String {
 private fun latexToUnicode(latex: String): String {
     var result = latex
 
-    // Greek letters
-    val greekLetters = mapOf(
-        "\\alpha" to "α", "\\beta" to "β", "\\gamma" to "γ", "\\delta" to "δ",
-        "\\epsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η", "\\theta" to "θ",
-        "\\iota" to "ι", "\\kappa" to "κ", "\\lambda" to "λ", "\\mu" to "μ",
-        "\\nu" to "ν", "\\xi" to "ξ", "\\omicron" to "ο", "\\pi" to "π",
-        "\\rho" to "ρ", "\\sigma" to "σ", "\\tau" to "τ", "\\upsilon" to "υ",
-        "\\phi" to "φ", "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω",
-        "\\Alpha" to "Α", "\\Beta" to "Β", "\\Gamma" to "Γ", "\\Delta" to "Δ",
-        "\\Epsilon" to "Ε", "\\Zeta" to "Ζ", "\\Eta" to "Η", "\\Theta" to "Θ",
-        "\\Iota" to "Ι", "\\Kappa" to "Κ", "\\Lambda" to "Λ", "\\Mu" to "Μ",
-        "\\Nu" to "Ν", "\\Xi" to "Ξ", "\\Omicron" to "Ο", "\\Pi" to "Π",
-        "\\Rho" to "Ρ", "\\Sigma" to "Σ", "\\Tau" to "Τ", "\\Upsilon" to "Υ",
-        "\\Phi" to "Φ", "\\Chi" to "Χ", "\\Psi" to "Ψ", "\\Omega" to "Ω"
-    )
-
-    // Math operators and symbols
-    val mathSymbols = mapOf(
-        "\\times" to "×", "\\div" to "÷", "\\pm" to "±", "\\mp" to "∓",
-        "\\cdot" to "·", "\\ast" to "∗", "\\star" to "★",
-        "\\leq" to "≤", "\\geq" to "≥", "\\neq" to "≠", "\\approx" to "≈",
-        "\\equiv" to "≡", "\\sim" to "∼", "\\propto" to "∝",
-        "\\in" to "∈", "\\notin" to "∉", "\\subset" to "⊂", "\\supset" to "⊃",
-        "\\subseteq" to "⊆", "\\supseteq" to "⊇", "\\cup" to "∪", "\\cap" to "∩",
-        "\\emptyset" to "∅", "\\infty" to "∞",
-        "\\sum" to "Σ", "\\prod" to "Π", "\\int" to "∫", "\\oint" to "∮",
-        "\\partial" to "∂", "\\nabla" to "∇", "\\forall" to "∀", "\\exists" to "∃",
-        "\\rightarrow" to "→", "\\leftarrow" to "←", "\\Rightarrow" to "⇒",
-        "\\Leftarrow" to "⇐", "\\leftrightarrow" to "↔", "\\Leftrightarrow" to "⇔",
-        "\\therefore" to "∴", "\\because" to "∵",
-        "\\sqrt" to "√", "\\cbrt" to "∛",
-        "\\degree" to "°", "\\percent" to "%", "\\permil" to "‰",
-        "\\prime" to "′", "\\doubleprime" to "″",
-        "\\angle" to "∠", "\\perp" to "⊥", "\\parallel" to "∥",
-        "\\triangle" to "△", "\\square" to "□", "\\circ" to "○",
-        "\\bullet" to "•", "\\diamond" to "◇",
-        "\\hbar" to "ℏ", "\\ell" to "ℓ",
-        "\\Re" to "ℜ", "\\Im" to "ℑ",
-        "\\aleph" to "ℵ", "\\wp" to "℘",
-        "\\land" to "∧", "\\lor" to "∨", "\\neg" to "¬",
-        "\\oplus" to "⊕", "\\otimes" to "⊗", "\\odot" to "⊙",
-        "\\le" to "≤", "\\ge" to "≥", "\\ne" to "≠"
-    )
-
     // Apply replacements
-    for ((latexSymbol, unicode) in greekLetters) {
+    for ((latexSymbol, unicode) in LATEX_GREEK_LETTERS) {
         result = result.replace(latexSymbol, unicode)
     }
-    for ((latexSymbol, unicode) in mathSymbols) {
+    for ((latexSymbol, unicode) in LATEX_MATH_SYMBOLS) {
         result = result.replace(latexSymbol, unicode)
     }
 
     // Handle \frac{a}{b} -> a/b
-    result = result.replace(Regex("""\\frac\{([^}]*)\}\{([^}]*)\}""")) { match ->
+    result = result.replace(FRAC_REGEX) { match ->
         val num = match.groupValues[1]
         val den = match.groupValues[2]
         "$num/$den"
     }
 
     // Handle \sqrt{x} -> √x
-    result = result.replace(Regex("""\\sqrt\{([^}]*)\}""")) { match ->
+    result = result.replace(SQRT_BRACE_REGEX) { match ->
         "√${match.groupValues[1]}"
     }
 
     // Handle superscripts ^{...} or ^x
-    result = result.replace(Regex("""\^\{([^}]*)\}""")) { match ->
+    result = result.replace(SUPERSCRIPT_BRACE_REGEX) { match ->
         toSuperscript(match.groupValues[1])
     }
-    result = result.replace(Regex("""\^([0-9+\-()=])""")) { match ->
+    result = result.replace(SUPERSCRIPT_CHAR_REGEX) { match ->
         toSuperscript(match.groupValues[1])
     }
 
     // Handle subscripts _{...} or _x
-    result = result.replace(Regex("""_\{([^}]*)\}""")) { match ->
+    result = result.replace(SUBSCRIPT_BRACE_REGEX) { match ->
         toSubscript(match.groupValues[1])
     }
-    result = result.replace(Regex("""_([0-9+\-()=])""")) { match ->
+    result = result.replace(SUBSCRIPT_CHAR_REGEX) { match ->
         toSubscript(match.groupValues[1])
     }
 
