@@ -66,6 +66,22 @@ internal class ExportController(
     }
 
     /**
+     * SAF 落盘（审计 A3 自 ChatScreen 下沉）：CreateDocument 回调拿到的 uri 写入
+     * payload（IO 线程），返回结果 snackbar 文案。调用方负责「写完清暂存 + 弹 snackbar」
+     * 的时序（与拆分前同一协程内顺序：runCatching 写盘 → 清 → snackbar）。
+     */
+    suspend fun writeExportPayload(uri: Uri, payload: String): String {
+        val result = runCatching {
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(payload.toByteArray(Charsets.UTF_8))
+                } ?: error("无法打开所选位置")
+            }
+        }
+        return result.fold({ "导出成功" }, { "导出失败：${it.toUserLine()}" })
+    }
+
+    /**
      * 导出 HTML（审计 P2-16：拼接与写盘在 IO 线程，仅 startActivity 回主线程）。
      * T5 起块模型消费：getAgentMessages 读时规范化，思考在 Reasoning 块不进正文
      * （stripThinkingTags 字符串清洗随旧链退役）；工具回执行不导出（与 UI 同口径，

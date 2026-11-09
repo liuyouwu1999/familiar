@@ -10,7 +10,6 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,25 +20,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DataObject
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
@@ -50,20 +43,14 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -71,7 +58,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,47 +78,36 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import dev.liuyouwu.familiar.core.llm.model.MessageMeta
 import dev.liuyouwu.familiar.core.llm.model.Role
 import dev.liuyouwu.familiar.skills.TypeInferer
 import dev.liuyouwu.familiar.ui.component.AttachmentPreview
 import dev.liuyouwu.familiar.ui.component.ChatInputBar
-import dev.liuyouwu.familiar.ui.component.ContextCapacityPanel
 import dev.liuyouwu.familiar.ui.component.MessageBubble
-import dev.liuyouwu.familiar.ui.component.PixelModelPickerDialog
 import dev.liuyouwu.familiar.ui.component.TypingDots
 import dev.liuyouwu.familiar.ui.model.MessageRenderModel
 import dev.liuyouwu.familiar.ui.model.UiMessage
 import dev.liuyouwu.familiar.pet.Kind
 import dev.liuyouwu.familiar.pet.PetSkinStore
 import dev.liuyouwu.familiar.pet.rememberSkinBitmap
-import dev.liuyouwu.familiar.util.isEmbeddingModel
-import dev.liuyouwu.familiar.ui.theme.PixelBottomPanel
-import dev.liuyouwu.familiar.ui.theme.PixelModeRow
-import dev.liuyouwu.familiar.ui.theme.WoodBorder
 import dev.liuyouwu.familiar.ui.theme.PaperLight
 import dev.liuyouwu.familiar.ui.theme.pixelEdgeFade
 import dev.liuyouwu.familiar.ui.theme.PixelIconButton
 import dev.liuyouwu.familiar.ui.theme.PixelPanel
 import dev.liuyouwu.familiar.ui.theme.PixelTopBar
-import dev.liuyouwu.familiar.ui.theme.PixelBottomPanel
-import dev.liuyouwu.familiar.ui.theme.PixelModeRow
 import dev.liuyouwu.familiar.ui.theme.pixelSecondaryAlpha
 import dev.liuyouwu.familiar.ui.theme.StarGold
 import dev.liuyouwu.familiar.util.parseColorHex
 import dev.liuyouwu.familiar.util.persona.DefaultPersonaCards
-import dev.liuyouwu.familiar.util.toUserLine
 import dev.liuyouwu.familiar.viewmodel.ChatViewModel
+import dev.liuyouwu.familiar.viewmodel.StreamStats
+import dev.liuyouwu.familiar.viewmodel.StreamingState
 import dev.liuyouwu.familiar.viewmodel.VoiceState
-import dev.liuyouwu.familiar.viewmodel.skillhooks.ToolGateResponse
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -200,9 +175,27 @@ fun ChatScreen(
         onBack()
     }
 
-    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
-    val streamingText by viewModel.streamingText.collectAsStateWithLifecycle()
-    val streamingReasoning by viewModel.streamingReasoning.collectAsStateWithLifecycle()
+    // 流式状态分组（审计 A3）：isStreaming/text/reasoning/toolStatus 四流合一为
+    // StreamingState（定义在 viewmodel/StreamSinks.kt；T3.6 VM 侧合并后此处改收单流）。
+    // initialValue 取各流现值——首帧与逐流 collect 帧等价，不闪过渡态
+    val streamingStateFlow = remember(viewModel) {
+        combine(
+            viewModel.isLoading,
+            viewModel.streamingText,
+            viewModel.streamingReasoning,
+            viewModel.streamingToolStatus,
+        ) { isStreaming, text, reasoning, toolStatus ->
+            StreamingState(isStreaming, text, reasoning, toolStatus)
+        }
+    }
+    val streamingState by streamingStateFlow.collectAsStateWithLifecycle(
+        initialValue = StreamingState(
+            isStreaming = viewModel.isLoading.value,
+            text = viewModel.streamingText.value,
+            reasoning = viewModel.streamingReasoning.value,
+            toolStatus = viewModel.streamingToolStatus.value,
+        )
+    )
     val attachments by viewModel.selectedAttachments.collectAsStateWithLifecycle()
     val replyingTo by viewModel.replyingTo.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -210,26 +203,42 @@ fun ChatScreen(
     val thinkingEnabled by viewModel.thinkingEnabled.collectAsStateWithLifecycle()
     // 联网搜索进行中的文案（"正在搜索：xxx"）：非空时替换"生成中"指示，让学生知道课堂在查资料
     val searchStatus by viewModel.searchStatus.collectAsStateWithLifecycle()
-    // Agent 会话工具进度桥（P3 T9）：SessionState.streamingToolStatus——流式中的
-    // "🔍 正在搜索…"指示行数据源（新引擎）；旧链未挂载会话时恒 null，仍读 searchStatus
-    val streamingToolStatus by viewModel.streamingToolStatus.collectAsStateWithLifecycle()
     // 流式发送者桥（P4 T4）：SessionState.streamingSender——聊天室/圆桌角色 run 的
     // 盖章位。列表尾流式泡据此挂角色名/色徽章（旧链占位行+发送者徽章的恢复形态）
     val streamingSender by viewModel.streamingSender.collectAsStateWithLifecycle()
     // 容量口径同源桥（评审 P0-1；T5 起六类型统一）：SessionState.contextBreakdown
-    // （SessionBreakdown 同形映射，trim 同一计费口径）；未挂载会话为 null，面板暂不显示
-    val sessionContextBreakdown by viewModel.sessionContextBreakdown.collectAsStateWithLifecycle()
+    // ——消费点已随对话设置框拆入 ChatDialogs.kt（对话框内部 collect）
     val isSpeaking by viewModel.isSpeaking.collectAsStateWithLifecycle()
     val autoReadEnabled by viewModel.autoReadEnabled.collectAsStateWithLifecycle()
-    val tokenCount by viewModel.tokenCount.collectAsStateWithLifecycle()
-    val tokensPerSecond by viewModel.tokensPerSecond.collectAsStateWithLifecycle()
+    // 生成用量分组（审计 A3）：tps/上下文占用/生成 token/缓存命中 四流合一为 StreamStats
+    // （viewmodel/StreamSinks.kt；T3.6 VM 侧合并后此处改收单流）。>0 判定在合并处
+    // 转 nullable，与原各 UI 位的 `> 0` 判定同口径
+    val streamStatsFlow = remember(viewModel) {
+        combine(
+            viewModel.tokensPerSecond,
+            viewModel.lastContextTokens,
+            viewModel.tokenCount,
+            viewModel.lastCacheHit,
+        ) { tps, lastContextTokens, tokenCount, lastCacheHit ->
+            StreamStats(
+                tps = tps.takeIf { it > 0.0 },
+                promptTokens = lastContextTokens.takeIf { it > 0 },
+                completionTokens = tokenCount.takeIf { it > 0 },
+                cachedTokens = lastCacheHit,
+            )
+        }
+    }
+    val streamStats by streamStatsFlow.collectAsStateWithLifecycle(
+        initialValue = StreamStats(
+            tps = viewModel.tokensPerSecond.value.takeIf { it > 0.0 },
+            promptTokens = viewModel.lastContextTokens.value.takeIf { it > 0 },
+            completionTokens = viewModel.tokenCount.value.takeIf { it > 0 },
+            cachedTokens = viewModel.lastCacheHit.value,
+        )
+    )
     val currentModel by viewModel.currentModel.collectAsStateWithLifecycle()
     val availableModels by viewModel.availableModels.collectAsStateWithLifecycle()
-    val videoFrameCount by viewModel.videoFrameCount.collectAsStateWithLifecycle()
-    val maxContext by viewModel.maxContext.collectAsStateWithLifecycle()
-    val chatRoomMaxReplies by viewModel.chatRoomMaxReplies.collectAsStateWithLifecycle()
-    val lastCacheHit by viewModel.lastCacheHit.collectAsStateWithLifecycle()
-    val lastContextTokens by viewModel.lastContextTokens.collectAsStateWithLifecycle()
+    // videoFrameCount/maxContext/chatRoomMaxReplies 消费点已随对话设置框拆入 ChatDialogs.kt
     // 排队追问横幅数据源（P-steer UI 面）：此前排队纯落库零反馈
     val queuedFollowUp by viewModel.pendingFollowUpUi.collectAsStateWithLifecycle()
     // familiar 拟人节奏：打字指示（精灵名）与分段曝光态（id → 已曝光段数）
@@ -253,7 +262,7 @@ fun ChatScreen(
     // 且设置开（默认开）→ 窗口 keepScreenOn；随组合/开关翻转自动清理（onDispose 置 false），
     // 离屏或收线交还系统熄屏节奏。后台半边由 AgentSessionController 的 PARTIAL 锁负责
     val keepScreenOnEnabled by viewModel.keepScreenOnEnabled.collectAsStateWithLifecycle()
-    val isStreaming = isLoading
+    val isStreaming = streamingState.isStreaming
     val keepView = LocalView.current   // LocalView.current 是 @Composable 读——effect 体外取
     DisposableEffect(isStreaming && keepScreenOnEnabled) {
         keepView.keepScreenOn = isStreaming && keepScreenOnEnabled
@@ -273,8 +282,9 @@ fun ChatScreen(
     var showModelSwitcher by rememberSaveable { mutableStateOf(false) }
     // 导出对话：格式选择框（Markdown / JSON / 纯文本分享）开关
     var showExportChooser by rememberSaveable { mutableStateOf(false) }
-    // SAF「另存为」待写入内容：launch 与回调之间暂存（不 saveable，进程重建后重选一次即可）
-    var pendingExportPayload by remember { mutableStateOf<String?>(null) }
+    // 结构化导出 SAF 接线（审计 A3 拆出 → ChatExportActions.kt）：launcher×2 +
+    // payload 暂存收拢于此，磁盘 IO 在 ExportController.writeExportPayload
+    val exportActions = rememberChatExportActions(viewModel, conversationId, snackbarHostState)
 
     // F4: Camera capture temp URI
     // rememberSaveable（审计 P2-12）：拍照期间旋转/进程重建后 URI 不丢，照片不再静默消失
@@ -302,44 +312,6 @@ fun ChatScreen(
         } else if (!granted) {
             // 权限被拒要有反馈，不再静默
             coroutineScope.launch { snackbarHostState.showSnackbar("需要相机权限") }
-        }
-    }
-
-    // 结构化导出（Markdown/JSON）：SAF CreateDocument 回调统一落盘（IO 线程），结果给 snackbar
-    fun writeExportPayload(uri: Uri?) {
-        val payload = pendingExportPayload
-        if (uri == null || payload == null) return
-        coroutineScope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(payload.toByteArray(Charsets.UTF_8))
-                    } ?: error("无法打开所选位置")
-                }
-            }
-            pendingExportPayload = null
-            snackbarHostState.showSnackbar(result.fold({ "导出成功" }, { "导出失败：${it.toUserLine()}" }))
-        }
-    }
-    val exportMarkdownLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/markdown")
-    ) { uri -> writeExportPayload(uri) }
-    val exportJsonLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri -> writeExportPayload(uri) }
-
-    // 选定 Markdown/JSON 后：投影读取 + IO 序列化在 ViewModel 内完成（审计 P2-16），这里只负责 SAF 落盘
-    fun startStructuredExport(format: String) {
-        coroutineScope.launch {
-            val result = viewModel.buildExportPayload(conversationId, format)
-            if (result == null) {
-                snackbarHostState.showSnackbar("导出失败：会话不存在")
-                return@launch
-            }
-            val (payload, safeTitle) = result
-            pendingExportPayload = payload
-            if (format == "json") exportJsonLauncher.launch("$safeTitle.json")
-            else exportMarkdownLauncher.launch("$safeTitle.md")
         }
     }
 
@@ -477,8 +449,8 @@ fun ChatScreen(
     }
 
     // Track loading state changes - scroll to bottom when streaming completes
-    LaunchedEffect(isLoading) {
-        if (wasLoading && !isLoading && autoScroll) {
+    LaunchedEffect(streamingState.isStreaming) {
+        if (wasLoading && !streamingState.isStreaming && autoScroll) {
             // Streaming just finished, ensure we scroll to bottom（用户已上滑让位则不打扰）
             val total = listState.layoutInfo.totalItemsCount
             if (total > 0) {
@@ -486,7 +458,7 @@ fun ChatScreen(
                 listState.animateScrollToItem(total - 1)
             }
         }
-        wasLoading = isLoading
+        wasLoading = streamingState.isStreaming
     }
 
     var lastUserMsgCount by remember { mutableIntStateOf(0) }
@@ -522,206 +494,26 @@ fun ChatScreen(
     }
 
     // Settings dialog (model switch + video frames + max context)
+    // 对话设置（审计 A3 拆出 → ChatDialogs.kt）：仅对话框消费的流由对话框内部
+    // collect；与屏体共用的 state（模型列表/当前模型/缓存命中/会话类型）以现值传入
     if (showSettingsDialog) {
-        var editingFrameCount by remember { mutableStateOf(videoFrameCount.toString()) }
-        var editingMaxContext by remember { mutableStateOf(maxContext.toString()) }
-        var modelsExpanded by remember { mutableStateOf(false) }
-
-        AlertDialog(
-            onDismissRequest = { showSettingsDialog = false },
-            title = { Text("设置") },
-            text = {
-                LazyColumn {
-                    // Model section
-                    item {
-                        Text("模型", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.size(8.dp))
-                    }
-
-                    // Show only first 4 models by default, or all if expanded
-                    // 过滤嵌入模型：误选对话必报错；过滤后为空则显示全部
-                    val selectableModels = availableModels
-                        .filter { !isEmbeddingModel(it.id.orEmpty()) }
-                        .ifEmpty { availableModels }
-                    val displayedModels = if (modelsExpanded) selectableModels else selectableModels.take(4)
-                    items(displayedModels) { model ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .heightIn(min = 48.dp)
-                                .clickable {
-                                    viewModel.switchModel(model.id.orEmpty())
-                                    showSettingsDialog = false  // Close dialog after switching
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if ((model.id ?: "") == currentModel) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = (model.id ?: "") == currentModel,
-                                    onClick = {
-                                        viewModel.switchModel(model.id.orEmpty())
-                                        showSettingsDialog = false  // Close dialog after switching
-                                    }
-                                )
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text(
-                                    text = model.id.orEmpty(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-
-                    // Expand/Collapse button
-                    if (selectableModels.size > 4) {
-                        item {
-                            TextButton(
-                                onClick = { modelsExpanded = !modelsExpanded },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = if (modelsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = null // 装饰性：旁有"展开/收起"文字
-                                )
-                                Spacer(modifier = Modifier.size(4.dp))
-                                Text(if (modelsExpanded) "收起 (${selectableModels.size - 4} 个)" else "展开全部 (${selectableModels.size - 4} 个)")
-                            }
-                        }
-                    }
-
-                    // Video frames section
-                    item {
-                        Spacer(modifier = Modifier.size(16.dp))
-                        Text("视频帧数", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = editingFrameCount,
-                                onValueChange = { editingFrameCount = it },
-                                label = { Text("帧数") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(shape = RectangleShape, border = BorderStroke(1.dp, WoodBorder), onClick = {
-                                keyboardController?.hide()
-                                val count = editingFrameCount.toIntOrNull()?.coerceIn(1, 50) ?: 20
-                                editingFrameCount = count.toString()
-                                viewModel.updateVideoFrameCount(count)
-                            }) {
-                                Text("保存")
-                            }
-                        }
-                        Text(
-                            "采集帧数 1-50，当前 $videoFrameCount",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha())
-                        )
-                    }
-
-                    // F5: Max Context section
-                    item {
-                        Spacer(modifier = Modifier.size(16.dp))
-                        Text("最大上下文 Token", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = editingMaxContext,
-                                onValueChange = { editingMaxContext = it },
-                                label = { Text("Token 数") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(shape = RectangleShape, border = BorderStroke(1.dp, WoodBorder), onClick = {
-                                keyboardController?.hide()
-                                val ctx = editingMaxContext.toIntOrNull()?.coerceIn(512, dev.liuyouwu.familiar.data.repository.SettingsRepository.MAX_CONTEXT_LIMIT)
-                                    ?: dev.liuyouwu.familiar.data.repository.SettingsRepository.DEFAULT_MAX_CONTEXT
-                                editingMaxContext = ctx.toString()
-                                viewModel.updateMaxContext(ctx)
-                            }) {
-                                Text("保存")
-                            }
-                        }
-                        Text(
-                            "上下文上限 512-${dev.liuyouwu.familiar.data.repository.SettingsRepository.MAX_CONTEXT_LIMIT}，当前 $maxContext",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha())
-                        )
-                    }
-
-                    // 上下文容量：构成明细 + 分段进度条。数据源（T5 统一）：六类型读
-                    // SessionState.contextBreakdown（VM 旧链 contextBreakdown 随
-                    // updateContextTokenUsage 删除退役）
-                    item {
-                        Spacer(modifier = Modifier.size(16.dp))
-                        Text("上下文容量", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        val breakdown = sessionContextBreakdown
-                        if (breakdown != null && breakdown.maxContext > 0) {
-                            ContextCapacityPanel(
-                                breakdown = breakdown,
-                                cacheHitPercent = lastCacheHit
-                            )
-                        }
-                    }
-
-                    // Chat room: AI replies per round
-                    item {
-                        Spacer(modifier = Modifier.size(16.dp))
-                        Text("聊天室·每轮AI发言数", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            OutlinedButton(
-                                shape = RectangleShape,
-                                onClick = { viewModel.updateChatRoomMaxReplies(chatRoomMaxReplies - 1) },
-                                enabled = chatRoomMaxReplies > 1
-                            ) { Text("−") }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                "$chatRoomMaxReplies",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            OutlinedButton(
-                                shape = RectangleShape,
-                                onClick = { viewModel.updateChatRoomMaxReplies(chatRoomMaxReplies + 1) },
-                                enabled = chatRoomMaxReplies < 6
-                            ) { Text("+") }
-                        }
-                        Text(
-                            if (isChatRoom.value) "你每发一条消息，主持人最多安排几个 AI 接话"
-                            else "仅聊天室生效（当前为普通会话）",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = pixelSecondaryAlpha())
-                        )
-                    }
-                }
+        ChatSettingsDialog(
+            isChatRoom = isChatRoom.value,
+            currentModel = currentModel,
+            availableModels = availableModels,
+            lastCacheHit = streamStats.cachedTokens,
+            videoFrameCount = viewModel.videoFrameCount,
+            maxContext = viewModel.maxContext,
+            sessionContextBreakdown = viewModel.sessionContextBreakdown,
+            chatRoomMaxReplies = viewModel.chatRoomMaxReplies,
+            onDismiss = { showSettingsDialog = false },
+            onModelSelected = { model ->
+                viewModel.switchModel(model)
+                showSettingsDialog = false  // Close dialog after switching
             },
-            confirmButton = {
-                TextButton(onClick = { showSettingsDialog = false }) { Text("关闭") }
-            }
+            onVideoFrameCountSaved = { count -> viewModel.updateVideoFrameCount(count) },
+            onMaxContextSaved = { ctx -> viewModel.updateMaxContext(ctx) },
+            onChatRoomMaxRepliesChanged = { count -> viewModel.updateChatRoomMaxReplies(count) },
         )
     }
 
@@ -729,14 +521,17 @@ fun ChatScreen(
         topBar = {
             // 主标题=会话名，副标题=模型 + token 用量；生成中附带速率（思考段也计入），
             // 空闲显示上次请求的真实上下文占用（lastUsage 精确值，非估算）
-            val tokenInfo = if (isLoading) {
+            // （审计 A3：tokenCount/tokensPerSecond/lastContextTokens/lastCacheHit 四流
+            // 已并入 streamStats——completionTokens=生成数、promptTokens=上下文占用）
+            val stats = streamStats
+            val tokenInfo = if (streamingState.isStreaming) {
                 buildString {
-                    if (tokenCount > 0) append("${tokenCount} tokens")
-                    if (tokensPerSecond > 0) append(" · ${String.format("%.1f", tokensPerSecond)} t/s")
+                    stats.completionTokens?.let { append("$it tokens") }
+                    stats.tps?.let { append(" · ${String.format("%.1f", it)} t/s") }
                 }
-            } else if (lastContextTokens > 0) "上下文 ${lastContextTokens} tokens" else ""
+            } else if (stats.promptTokens != null) "上下文 ${stats.promptTokens} tokens" else ""
             // 缓存命中率：llama.cpp timings / DeepSeek / OpenAI 系用量里带，本地与云端都有意义
-            val cacheSuffix = lastCacheHit?.let { " · 缓存命中${it}%" } ?: ""
+            val cacheSuffix = stats.cachedTokens?.let { " · 缓存命中${it}%" } ?: ""
             // 模型名带 ⌄ 下拉暗示：可点直切模型（曾经毫无可见提示，开发者都发现不了）
             val subtitle = listOfNotNull(
                 currentModel.takeIf { it.isNotBlank() }
@@ -765,7 +560,7 @@ fun ChatScreen(
                     var showMenu by remember { mutableStateOf(false) }
 
                     // Stop button always visible when loading
-                    if (isLoading) {
+                    if (streamingState.isStreaming) {
                         PixelIconButton(
                             icon = Icons.Default.Stop,
                             contentDescription = "停止生成",
@@ -775,7 +570,7 @@ fun ChatScreen(
                     }
 
                     // 朗读/停止朗读最后一条 AI 回复
-                    if (!isLoading && uiMessages.any { it.role == Role.ASSISTANT && it.fullText.isNotBlank() }) {
+                    if (!streamingState.isStreaming && uiMessages.any { it.role == Role.ASSISTANT && it.fullText.isNotBlank() }) {
                         PixelIconButton(
                             icon = Icons.Default.VolumeUp,
                             contentDescription = if (isSpeaking) "停止朗读" else "朗读回复",
@@ -808,7 +603,7 @@ fun ChatScreen(
                             )
                         }
                         // Regenerate（还需存在 user 消息：压缩后只剩 assistant 时是死按钮）
-                        if (!isLoading && uiMessages.any { it.role == Role.ASSISTANT } &&
+                        if (!streamingState.isStreaming && uiMessages.any { it.role == Role.ASSISTANT } &&
                             uiMessages.any { it.isUser }
                         ) {
                             DropdownMenuItem(
@@ -915,11 +710,11 @@ fun ChatScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isLoading) {
+            if (streamingState.isStreaming) {
                 // 生成中指示行：会话工具进度（"🔍 正在搜索：xxx"，新引擎桥）优先，
                 // 旧链搜索文案（searchStatus）次之，默认"…生成中"
                 Text(
-                    text = streamingToolStatus ?: searchStatus ?: "…生成中",
+                    text = streamingState.toolStatus ?: searchStatus ?: "…生成中",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
@@ -940,7 +735,7 @@ fun ChatScreen(
             ) {
                 items(items = visibleUiMessages, key = { it.id }) { message ->
                     val isLastAssistant = message.role == Role.ASSISTANT &&
-                        uiMessages.lastOrNull()?.id == message.id && !isLoading
+                        uiMessages.lastOrNull()?.id == message.id && !streamingState.isStreaming
 
                     // familiar 拟人节奏：切段只影响渲染——segments != null 的消息按
                     // 已曝光段数逐段渲染气泡；活跃接收时由 familiarReveal 推进曝光，
@@ -1058,7 +853,7 @@ fun ChatScreen(
                                 { viewModel.continueGeneration(conversationId) }
                             } else null,
                             // 换模型重试：只挂末条助手消息（与重新生成同门槛，聊天室 AI 同学除外），
-                            // 点击后由下方 PixelModelPickerDialog 接管
+                            // 点击后由下方 ChatRetryModelPickerDialog（ChatDialogs.kt）接管
                             onRetryWithModel = if (isLastAssistant && message.senderName == null) {
                                 { showRetryModelPicker = true }
                             } else null,
@@ -1079,7 +874,7 @@ fun ChatScreen(
                 //   与旧链占位行插入前同相
                 // - T9 期四类型仍走旧链：DB 占位行已在 visibleUiMessages 隐藏，
                 //   幽灵即唯一流式泡（等待相正文为空时 MessageBubble 显示"思考中..."，与旧占位泡等价）
-                if (isLoading && (!isChatRoom.value || streamingSender != null)) {
+                if (streamingState.isStreaming && (!isChatRoom.value || streamingSender != null)) {
                     if (isFamiliarConv) {
                         val typingName = familiarTypingName
                         if (typingName != null) {
@@ -1100,8 +895,8 @@ fun ChatScreen(
                                     senderColorHex = streamingSender?.colorHex,
                                 ),
                                 isStreaming = true,
-                                streamingText = streamingText,
-                                streamingReasoning = streamingReasoning,
+                                streamingText = streamingState.text,
+                                streamingReasoning = streamingState.reasoning,
                                 showThinking = thinkingEnabled,
                                 avatarLetter = ghostSenderName?.let { it.first().toString() }
                                     ?: if (isClassroomConv || isEli5Conv) "老" else null,
@@ -1113,7 +908,7 @@ fun ChatScreen(
                     }
                 }
 
-                if (uiMessages.isEmpty() && !isLoading) {
+                if (uiMessages.isEmpty() && !streamingState.isStreaming) {
                     item {
                         Box(
                             modifier = Modifier
@@ -1289,7 +1084,7 @@ fun ChatScreen(
                     quickCommands.forEach { cmd ->
                         androidx.compose.material3.SuggestionChip(
                             onClick = { viewModel.sendMessage(conversationId, cmd.command) },
-                            enabled = !isLoading,
+                            enabled = !streamingState.isStreaming,
                             label = { Text(cmd.label, style = MaterialTheme.typography.labelSmall) }
                         )
                     }
@@ -1348,7 +1143,7 @@ fun ChatScreen(
                 },
                 // 生成中四类单体：placeholder 提示双语义；长按发送=排队追问
                 // （queueFollowUp 空闲/聊天室/错配/未挂载自动降级普通发送）
-                inputHint = if (isLoading && fourTypeConv) "生成中：发送=插话 · 长按发送=排队追问" else "输入消息…",
+                inputHint = if (streamingState.isStreaming && fourTypeConv) "生成中：发送=插话 · 长按发送=排队追问" else "输入消息…",
                 onSendLongPress = if (fourTypeConv) { {
                     val t = inputText.trim()
                     if (t.isNotBlank()) {
@@ -1387,99 +1182,43 @@ fun ChatScreen(
     }
 
     if (showPromptDialog) {
-        AlertDialog(
-            onDismissRequest = { showPromptDialog = false },
-            title = { Text("系统提示词") },
-            text = {
-                OutlinedTextField(
-                    value = editingPrompt, onValueChange = { editingPrompt = it },
-                    modifier = Modifier.fillMaxWidth().height(200.dp),
-                    placeholder = { Text("输入系统提示词…") }
-                )
-            },
-            confirmButton = {
-                Button(shape = RectangleShape, border = BorderStroke(1.dp, WoodBorder), onClick = {
-                    keyboardController?.hide()
-                    viewModel.updateSystemPrompt(conversationId, editingPrompt)
-                    showPromptDialog = false
-                }) { Text("保存") }
-            },
-            dismissButton = { TextButton(onClick = { showPromptDialog = false }) { Text("取消") } }
+        ChatPromptEditDialog(
+            prompt = editingPrompt,
+            onPromptChange = { editingPrompt = it },
+            onDismiss = { showPromptDialog = false },
+            onSave = { prompt ->
+                viewModel.updateSystemPrompt(conversationId, prompt)
+                showPromptDialog = false
+            }
         )
     }
 
     // /clear 二次确认：样式与删除会话确认一致
     if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("清空对话") },
-            text = { Text("清空全部消息？清掉就找不回来了") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showClearConfirm = false
-                    viewModel.clearConversation(conversationId)
-                }) { Text("清空", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("取消") }
+        ChatClearConfirmDialog(
+            onDismiss = { showClearConfirm = false },
+            onConfirm = {
+                showClearConfirm = false
+                viewModel.clearConversation(conversationId)
             }
         )
     }
 
-    // 工具审批对话框（审计 S2）：标题=工具名，正文=摘要/目标 host；三键=拒绝/允许一次/
-    // 总是允许（host 回写白名单）。点外部/返回键=拒绝（默认不放行）；闸门侧超时同样
-    // 视同拒绝。collectAsStateWithLifecycle 已在上方常驻订阅（在场判定源）。
+    // 工具审批对话框（审计 S2 → ChatDialogs.kt）：三键=拒绝/允许一次/总是允许。
+    // pendingApproval 流的常驻订阅仍在上方（订阅计数=前台监听者在场判定源），
+    // 此处只把解析后的请求值传给对话框
     val approval = pendingToolApproval
     if (approval != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.toolGate.respond(ToolGateResponse.DENY) },
-            title = { Text("确认工具调用：${approval.tool}") },
-            text = {
-                Column {
-                    Text(approval.summary)
-                    approval.host?.let {
-                        Text(
-                            "目标主机：$it",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(
-                        "AI 请求执行上述操作，允许吗？",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-            },
-            confirmButton = {
-                Row {
-                    TextButton(onClick = { viewModel.toolGate.respond(ToolGateResponse.ALLOW_ALWAYS) }) {
-                        Text("总是允许")
-                    }
-                    TextButton(onClick = { viewModel.toolGate.respond(ToolGateResponse.ALLOW_ONCE) }) {
-                        Text("允许一次")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.toolGate.respond(ToolGateResponse.DENY) }) {
-                    Text("拒绝", color = MaterialTheme.colorScheme.error)
-                }
-            }
+        ChatToolApprovalDialog(
+            approval = approval,
+            onRespond = { viewModel.toolGate.respond(it) }
         )
     }
 
-    // 换模型重试：像素单选框，数据源与设置面板一致（availableModels 剔除 embedding，空则回退全量）
+    // 换模型重试：像素单选框，数据源与设置面板一致（ChatDialogs.kt 内剔除 embedding，空则回退全量）
     if (showRetryModelPicker) {
-        val retryModels = remember(availableModels) {
-            availableModels
-                .filter { !isEmbeddingModel(it.id.orEmpty()) }
-                .ifEmpty { availableModels }
-                .mapNotNull { it.id }
-        }
-        PixelModelPickerDialog(
-            title = "换模型重试",
-            models = retryModels,
+        ChatRetryModelPickerDialog(
+            availableModels = availableModels,
             currentModel = currentModel,
             onDismiss = { showRetryModelPicker = false },
             onSelected = { model ->
@@ -1494,15 +1233,8 @@ fun ChatScreen(
     // 顶栏切模型：选完立即落库生效（本机所有对话通用），并给明确反馈——
     // "换模型"是一等操作，不能藏在设置里让用户换不对（2026-10-27 设计复盘）
     if (showModelSwitcher) {
-        val switcherModels = remember(availableModels) {
-            availableModels
-                .filter { !isEmbeddingModel(it.id.orEmpty()) }
-                .ifEmpty { availableModels }
-                .mapNotNull { it.id }
-        }
-        PixelModelPickerDialog(
-            title = "切换模型（立即生效）",
-            models = switcherModels,
+        ChatModelSwitcherDialog(
+            availableModels = availableModels,
             currentModel = currentModel,
             onDismiss = { showModelSwitcher = false },
             onSelected = { model ->
@@ -1513,79 +1245,39 @@ fun ChatScreen(
         )
     }
 
-    // 导出对话：格式选择框（Markdown / JSON 走 SAF 另存为；纯文本分享沿用原 HTML 分享）
-    // 大肥鱼的记忆：查看 + 复制（清空入口只留在首页设置，聊天页不给误触机会）
+    // 大肥鱼的记忆：查看 + 复制（清空入口只留在首页设置，聊天页不给误触机会）。
+    // 对话框本体在 ChatDialogs.kt；读取（挂起点）与复制动作留在调用位，时序同拆分前
     if (showMemoryDialog) {
         var memoryText by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(Unit) { memoryText = viewModel.readFamiliarMemory() }
         val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-        AlertDialog(
-            onDismissRequest = { showMemoryDialog = false },
-            title = { Text("大肥鱼的记忆") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 380.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        memoryText ?: "读取中…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showMemoryDialog = false }) { Text("关闭") }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = memoryText != null,
-                    onClick = {
-                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(memoryText.orEmpty()))
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("已复制")
-                        }
-                    }
-                ) { Text("复制") }
+        ChatMemoryDialog(
+            memoryText = memoryText,
+            onDismiss = { showMemoryDialog = false },
+            onCopy = {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(memoryText.orEmpty()))
+                coroutineScope.launch { snackbarHostState.showSnackbar("已复制") }
             }
         )
     }
 
+    // 导出对话：格式选择框（Markdown / JSON 走 SAF 另存为；纯文本分享沿用原 HTML 分享）——
+    // 面板本体在 ChatDialogs.kt，SAF 接线在 ChatExportActions.kt
     if (showExportChooser) {
-        PixelBottomPanel(onDismiss = { showExportChooser = false }, title = "导出对话") {
-            PixelModeRow(
-                icon = Icons.Default.Description,
-                title = "Markdown",
-                subtitle = "保存为 .md 文件",
-                iconBox = MaterialTheme.colorScheme.primary,
-                onClick = {
-                    showExportChooser = false
-                    startStructuredExport("md")
-                }
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            PixelModeRow(
-                icon = Icons.Default.DataObject,
-                title = "JSON",
-                subtitle = "保存为 .json 文件",
-                iconBox = MaterialTheme.colorScheme.secondary,
-                onClick = {
-                    showExportChooser = false
-                    startStructuredExport("json")
-                }
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            PixelModeRow(
-                icon = Icons.Default.Share,
-                title = "纯文本分享",
-                subtitle = "生成网页分享",
-                iconBox = MaterialTheme.colorScheme.tertiary,
-                onClick = {
-                    showExportChooser = false
-                    viewModel.exportConversationHtml(conversationId)
-                }
-            )
-        }
+        ChatExportChooserDialog(
+            onDismiss = { showExportChooser = false },
+            onExportMarkdown = {
+                showExportChooser = false
+                exportActions.startStructuredExport("md")
+            },
+            onExportJson = {
+                showExportChooser = false
+                exportActions.startStructuredExport("json")
+            },
+            onSharePlainText = {
+                showExportChooser = false
+                viewModel.exportConversationHtml(conversationId)
+            }
+        )
     }
 }

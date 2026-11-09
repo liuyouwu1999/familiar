@@ -871,6 +871,10 @@ class ChatViewModel(
     suspend fun buildExportPayload(conversationId: Long, format: String): Pair<String, String>? =
         export.buildExportPayload(conversationId, format)
 
+    /** SAF 落盘（审计 A3 自 ChatScreen 下沉，实现在 [ExportController.writeExportPayload]）。 */
+    suspend fun writeExportPayload(uri: android.net.Uri, payload: String): String =
+        export.writeExportPayload(uri, payload)
+
     fun exportConversationHtml(conversationId: Long) = export.exportConversationHtml(conversationId)
 
     fun addImageAttachment(uri: Uri) = export.addImageAttachment(uri)
