@@ -1,9 +1,9 @@
 import java.util.Properties
 
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("com.google.devtools.ksp")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
 }
 
 // 正式签名配置：密钥库与密码在本机 keystore.properties（不入 git）
@@ -77,7 +77,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
+        kotlinCompilerExtensionVersion = libs.versions.compose.compiler.get()
     }
 
     // 迁移测试读 schema 快照（MigrationTestHelper 按 assets 里的 17.json 校验迁移结果）
@@ -90,64 +90,64 @@ dependencies {
     // Compose BOM：2024.02.02 = compose 1.6.x + material3 1.2.1 配套。
     // 旧 2024.01.00（material3 1.1.2 + 被 lifecycle 链抬上来的 animation-core 1.6.0）
     // 会在 CircularProgressIndicator 上 NoSuchMethodError（at() 签名 1.6 变更）
-    val composeBom = platform("androidx.compose:compose-bom:2024.02.02")
+    val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
     // collectAsStateWithLifecycle（审计 P3：后台停止空转收集与 Room 观察）
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.activity.compose)
 
     // Compose UI
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.6")
+    implementation(libs.androidx.navigation.compose)
 
     // Room
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     // DataStore
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation(libs.androidx.datastore.preferences)
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.sse)
 
     // Gson
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation(libs.gson)
 
     // Coil for image loading
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation(libs.coil.compose)
 
     // PDF rendering
-    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation(libs.pdfbox.android)
 
     // Markdown rendering
-    implementation("com.github.jeziellago:compose-markdown:0.3.6")
+    implementation(libs.compose.markdown)
 
     // Unit tests
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
-    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    testImplementation(libs.junit)
+    testImplementation(libs.mockwebserver)
+    testImplementation(libs.okhttp.tls)
     // Dispatchers.setMain（审计 A2：Chat/ChatList ViewModel JVM 构造测试——viewModelScope
     // 走 Main.immediate，无 setMain 则构造即崩）
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation(libs.kotlinx.coroutines.test)
 
     // androidTest：MigrationTestHelper（room-testing）+ AndroidJUnitRunner（instrumentation
     // 运行必需；实测仅上 classpath 不够，还须 defaultConfig 声明 testInstrumentationRunner）
-    androidTestImplementation("androidx.room:room-testing:2.6.1")
-    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.test.runner)
 }
 
 // Room schema 快照：迁移测试与 schema 演进追踪依赖它
