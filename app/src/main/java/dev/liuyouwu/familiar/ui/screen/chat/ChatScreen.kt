@@ -30,18 +30,18 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -529,7 +529,7 @@ fun ChatScreen(
                     // 朗读/停止朗读最后一条 AI 回复
                     if (!streamingState.isStreaming && uiMessages.any { it.role == Role.ASSISTANT && it.fullText.isNotBlank() }) {
                         PixelIconButton(
-                            icon = Icons.Default.VolumeUp,
+                            icon = Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = if (isSpeaking) "停止朗读" else "朗读回复",
                             onClick = { viewModel.toggleSpeakLastReply(conversationId) },
                             tint = if (isSpeaking) StarGold else PaperLight
@@ -944,7 +944,7 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.Reply,
+                            Icons.AutoMirrored.Filled.Reply,
                             contentDescription = null, // 装饰性：旁有"回复…"文字
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)

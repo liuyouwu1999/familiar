@@ -149,7 +149,14 @@ class ChatViewModelConstructTest {
         override fun chatRoomParticipantDao(): ChatRoomParticipantDao = ThrowingParticipantDao
         override fun personaPresetDao(): PersonaPresetDao = FakePersonaPresetDao
         override fun learningProfileDao(): LearningProfileDao = ThrowingLearningProfileDao
-        override fun createInvalidationTracker(): InvalidationTracker = InvalidationTracker(this, "messages")
+        // Room 2.7 起 createInvalidationTracker/createOpenHelper 与 InvalidationTracker(database, tables)
+        // 构造器标记弃用（generated impl 不再调用），但基类仍 abstract，假件必须 override——
+        // 按编译器指引随基类标注 @Deprecated；构造器换非弃用 4 参形（空 map，与 2 参形委托等价）
+        @Deprecated("generated impl no longer calls this; kept to satisfy abstract base")
+        override fun createInvalidationTracker(): InvalidationTracker =
+            InvalidationTracker(this, emptyMap(), emptyMap(), "messages")
+
+        @Deprecated("generated impl no longer calls this; kept to satisfy abstract base")
         override fun createOpenHelper(config: DatabaseConfiguration) =
             throw UnsupportedOperationException("Room 管道真机验证")
         override fun clearAllTables() = throw UnsupportedOperationException("Room 管道真机验证")

@@ -409,7 +409,8 @@ class ConnectionProbe(
             (!message.content.isNullOrEmpty() ||
                 !message.reasoningContent.isNullOrEmpty() ||
                 !message.reasoning.isNullOrEmpty())
-        if (hasText && message != null) {
+        // hasText 蕴含 message != null（上方短路链，K2 迁移核对点），不再重复判空
+        if (hasText) {
             // 载荷顺序对照原实现（思考先行），preview 取首个载荷前 80 字
             send(
                 ProbeEvent.Delta(

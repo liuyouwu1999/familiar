@@ -3,6 +3,8 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    // Kotlin 2.0 起 compose compiler 以独立插件分发（版本 = Kotlin），取代 composeOptions.kotlinCompilerExtensionVersion
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
 
@@ -76,10 +78,6 @@ android {
         compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = libs.versions.compose.compiler.get()
-    }
-
     // 迁移测试读 schema 快照（MigrationTestHelper 按 assets 里的 17.json 校验迁移结果）
     sourceSets {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
@@ -87,9 +85,9 @@ android {
 }
 
 dependencies {
-    // Compose BOM：2024.02.02 = compose 1.6.x + material3 1.2.1 配套。
-    // 旧 2024.01.00（material3 1.1.2 + 被 lifecycle 链抬上来的 animation-core 1.6.0）
-    // 会在 CircularProgressIndicator 上 NoSuchMethodError（at() 签名 1.6 变更）
+    // Compose BOM：2024.10.01 = compose 1.7.5 + material3 1.3.1 配套（Kotlin 2.0 批次，审计 E3）。
+    // 历史：2024.01.00（material3 1.1.2 + 被 lifecycle 链抬上来的 animation-core 1.6.0）
+    // 会在 CircularProgressIndicator 上 NoSuchMethodError（at() 签名 1.6 变更），故当时升到 2024.02.02
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -112,9 +110,8 @@ dependencies {
     // Navigation
     implementation(libs.androidx.navigation.compose)
 
-    // Room
+    // Room（2.7 起 room-ktx 并入 room-runtime 成空壳，官方建议移除，不再单独声明）
     implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
     // DataStore

@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import dev.liuyouwu.familiar.core.llm.client.readLineBounded
 import dev.liuyouwu.familiar.util.NetGuards
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -486,6 +487,9 @@ class McpClient(
      * 响应等待）；桥返回后的 IOException 若源于取消竞争 → ensureActive 转抛
      * CancellationException（ToolRegistry 重抛契约）。
      */
+    // resume(value, onCancellation) 在 coroutines 1.7 为 @ExperimentalCoroutinesApi（警告级）：
+    // 显式 opt-in 而非抑制——取消钩子关闭在飞响应是本桥的防泄漏契约（K2 迁移核对点）
+    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun post(client: OkHttpClient, request: Request): Response =
         withContext(Dispatchers.IO) {
             val call = client.newCall(request)

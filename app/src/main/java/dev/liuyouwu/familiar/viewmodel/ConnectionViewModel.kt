@@ -277,7 +277,8 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             }
             // 二段扩展扫描（一段常用名单全空时才触发）：只对"没填端口"的本地 HTTP
             // 地址扫，并行百余端口首中即返；命中回填完整地址走同一条成功路径
-            if (!skipProbe && parsedUrl != null) {
+            // !skipProbe 蕴含 parsedUrl != null（skipProbe 首项即判空，K2 迁移核对点）
+            if (!skipProbe) {
                 val apiKey = _apiKey.value
                 val hit = dev.liuyouwu.familiar.util.PortScanner.sweep(
                     hostUrl = normalized,

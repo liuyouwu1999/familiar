@@ -26,8 +26,11 @@ object BackupManager {
         val version: Int = FORMAT_VERSION,
         val exportedAt: Long,
         val app: String = "Familiar",
-        val conversations: List<BackupConversation>,
-        val messages: List<BackupMessage>,
+        // Gson 反序列化走 Unsafe：畸形备份缺这两个字段时会绕过 Kotlin 非空约束塞入 null，
+        // 必须声明为可空；import 侧先判空抛友好 IllegalArgumentException 而非 NPE
+        // （K2 迁移核对点：非空声明会让 import 的判空被流分析误判"恒 false"）
+        val conversations: List<BackupConversation>?,
+        val messages: List<BackupMessage>?,
         // v2 新增三表（审计 P1-2：恢复曾级联清空聊天室成员且无法找回）。
         // Gson 反序列化走 Unsafe，旧 v1 备份缺这些字段时不会应用 Kotlin 默认值，
         // 必须声明为可空、import 侧 orEmpty() 兜底

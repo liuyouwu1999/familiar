@@ -15,7 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
@@ -150,7 +150,7 @@ fun ChatInputBar(
                             showAttachmentMenu = false
                             filePicker.launch("*/*")
                         },
-                        leadingIcon = { Icon(Icons.Default.InsertDriveFile, contentDescription = null) } // 装饰性：旁有菜单文字
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null) } // 装饰性：旁有菜单文字
                     )
                     DropdownMenuItem(
                         text = { Text("视频") },

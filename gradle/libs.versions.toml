@@ -1,16 +1,15 @@
 # Version catalog（审计 E3 第一步）：全部依赖/插件版本收敛于此。
-# 版本号照抄迁移前现状（纯搬迁，零升级）；后续工具链升级（阶段 4 后续任务）只改本文件。
+# T4.3 起为升级后终值：Kotlin 2.0.21（compose-compiler 随 Kotlin 插件一体化，不再单独设版本）。
 [versions]
 agp = "8.7.3"
-kotlin = "1.9.22"
-ksp = "1.9.22-1.0.17"
-compose-compiler = "1.5.8"
-compose-bom = "2024.02.02"
+kotlin = "2.0.21"
+ksp = "2.0.21-1.0.28"
+compose-bom = "2024.10.01"
 core-ktx = "1.12.0"
-lifecycle = "2.7.0"
-activity-compose = "1.8.2"
-navigation-compose = "2.7.6"
-room = "2.6.1"
+lifecycle = "2.8.7"
+activity-compose = "1.9.3"
+navigation-compose = "2.8.3"
+room = "2.7.2"
 datastore = "1.0.0"
 okhttp = "4.12.0"
 gson = "2.10.1"
@@ -40,7 +39,6 @@ androidx-compose-material-icons-extended = { module = "androidx.compose.material
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
-androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 
@@ -63,4 +61,6 @@ androidx-test-runner = { module = "androidx.test:runner", version.ref = "android
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# Kotlin 2.0 起 compose compiler 以独立 Gradle 插件分发，版本与 Kotlin 强制一致
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

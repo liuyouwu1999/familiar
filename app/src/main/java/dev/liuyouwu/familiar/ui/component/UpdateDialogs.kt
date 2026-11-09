@@ -105,8 +105,9 @@ fun UpdateAboutDialog(
 
                     is UpdateUiState.Downloading -> {
                         Text("正在下载更新…${state.percent}%")
+                        // m3 1.3 起弃用 Float 重载，改 lambda 重载（新 spec 默认带 stop indicator + gap）
                         LinearProgressIndicator(
-                            progress = state.percent / 100f,
+                            progress = { state.percent / 100f },
                             modifier = Modifier.fillMaxWidth().height(6.dp),
                         )
                     }

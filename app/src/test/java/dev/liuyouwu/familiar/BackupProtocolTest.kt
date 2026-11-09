@@ -71,8 +71,8 @@ class BackupProtocolTest {
         """.trimIndent()
         // v1 旧备份导入新版必须不抛异常；缺省三表为 null，由 import 侧 orEmpty() 兜底
         val data = gson.fromJson(json, BackupManager.BackupData::class.java)
-        assertEquals(1, data.conversations.size)
-        assertEquals(1, data.messages.size)
+        assertEquals(1, data.conversations!!.size)
+        assertEquals(1, data.messages!!.size)
         assertNull(data.participants)
         assertNull(data.promptTemplates)
         assertNull(data.personaPresets)

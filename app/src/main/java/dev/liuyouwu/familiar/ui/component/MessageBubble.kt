@@ -35,7 +35,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -235,8 +235,9 @@ fun MessageBubble(
         // 头像：聊天室=首字色块（角色色），大肥鱼=皮肤位图；用户消息无头像（右侧气泡）。
         // 位图 null 时靠 avatarColor 出 accent 占位框（familiar 专属路径）；
         // 聊天室 avatarColor 恒伴 avatarLetter，不受该条件影响
+        // avatarLetter == null 已由前面 || 短路蕴含（K2 迁移核对点），不再重复判
         val showAvatar = !isUser && (avatarBitmap != null || avatarRes != null || avatarLetter != null ||
-            (avatarColor != null && avatarLetter == null))
+            avatarColor != null)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
@@ -645,7 +646,7 @@ fun MessageBubble(
                                 showContextMenu = false
                                 onReply(message)
                             },
-                            leadingIcon = { Icon(Icons.Default.Reply, contentDescription = null) }
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null) }
                         )
                     }
                     if (isUser) {

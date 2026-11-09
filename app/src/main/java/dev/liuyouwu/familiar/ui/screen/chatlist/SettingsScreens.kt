@@ -246,7 +246,8 @@ private fun rememberPetOverlayUiState(
         mutableStateOf(android.provider.Settings.canDrawOverlays(context))
     }
     // 悬浮窗授权页回来：刷新授权状态；已授权且刚才想开 → 落库
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    // lifecycle 2.8 起 LocalLifecycleOwner 迁至 lifecycle-runtime-compose（K2 批次核对点）
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
