@@ -3,6 +3,7 @@ package dev.liuyouwu.familiar.data.remote.api
 import com.google.gson.Gson
 import dev.liuyouwu.familiar.core.llm.client.LineTooLongException
 import dev.liuyouwu.familiar.core.llm.client.attachTimeContext
+import dev.liuyouwu.familiar.core.llm.client.capDumpForDisk
 import dev.liuyouwu.familiar.core.llm.client.readLineBounded
 // wire DTO（ChatRequest/ChatResponse/MessageDto/StreamOptions 等）以星号导入对应用
 import dev.liuyouwu.familiar.core.llm.wire.*
@@ -73,6 +74,10 @@ class ConnectionProbe(
     // 命中一次后记住该地址，后续请求不再携带，避免整条聊天链路 4xx。
     // 可变集由 ConnectionViewModel 持有（VM 级生命周期）并构造注入
     private val blacklistedBases: MutableSet<String>,
+    // 请求诊断转储开关（审计 S4）：本类 sendChatStream 是独立写盘路径（不经
+    // LlmClient Deps）——suspend 读 DataStore 由 ConnectionViewModel 构造注入；
+    // 缺省 false（恒不落盘，测试/JVM 零副作用）
+    private val diagEnabled: suspend () -> Boolean = { false },
 ) {
 
     private val client = OkHttpClient.Builder()
@@ -153,11 +158,14 @@ class ConnectionProbe(
 
         val json = gson.toJson(chatRequest)
 
-        // 诊断：完整请求体落盘（不截断），定位"同一模型 curl 正常、app 内退化"类问题
+        // 诊断：请求体落盘（审计 S4：开关门控 + 256K 截断，与 LlmClient.dumpRequestJson
+        // 同口径——截断单点 core.llm.client.capDumpForDisk），定位“同一模型 curl 正常、
+        // app 内退化”类问题。开关为 suspend 读（DataStore），每次请求组装时求值
         run {
             try {
+                if (!diagEnabled()) return@run
                 val dir = dev.liuyouwu.familiar.FamiliarApp.instance.getExternalFilesDir(null) ?: return@run
-                java.io.File(dir, "last_request.json").writeText(json)
+                java.io.File(dir, "last_request.json").writeText(capDumpForDisk(json))
             } catch (_: Exception) {
             }
         }

@@ -41,7 +41,12 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     // 命中一次后记住该地址，后续请求不再携带，避免整条聊天链路 4xx。
     // Set 在 VM 持有（VM 级生命周期），经构造注入 ConnectionProbe 读写
     private val streamOptionsUnsupportedBases = mutableSetOf<String>()
-    private val connectionProbe = ConnectionProbe(streamOptionsUnsupportedBases)
+    // 探针写盘开关（审计 S4）：suspend 读 DataStore——probe 的 sendChatStream 是
+    // 独立写盘路径（不经 LlmClient Deps），构造时注入读开关 lambda，每次探测求值
+    private val connectionProbe = ConnectionProbe(
+        streamOptionsUnsupportedBases,
+        diagEnabled = { settingsRepository.diagDumpEnabled.first() },
+    )
 
     // 体检第一步"地址可达"专用：轻量 GET，5 秒超时快速给结论（ModelsApi 的
     // probeClient 是 2/3 秒且打在 /v1/models 上，语义是探测端口而不是验地址）

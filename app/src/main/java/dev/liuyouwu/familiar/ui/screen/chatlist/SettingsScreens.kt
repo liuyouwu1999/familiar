@@ -706,6 +706,29 @@ internal fun SettingsDialog(
                         Text("MCP 工具")
                     }
                 }
+                // 请求诊断转储（审计 S4）：默认关——明文完整对话落盘属隐私敏感行为；
+                // 开关改动自下一条消息生效（设置快照随链刷新，无需重启）
+                item {
+                    Spacer(modifier = Modifier.size(16.dp))
+                    val diagDumpEnabled by chatViewModel.diagDumpEnabled.collectAsStateWithLifecycle()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("请求诊断转储", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "开启后每次请求把完整对话内容明文写入 last_request.json（诊断用）",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                        }
+                        Switch(
+                            checked = diagDumpEnabled,
+                            onCheckedChange = { chatViewModel.setDiagDumpEnabled(it) }
+                        )
+                    }
+                }
                 // 隐私说明
                 item {
                     Text(

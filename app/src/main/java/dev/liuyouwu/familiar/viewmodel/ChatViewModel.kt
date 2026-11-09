@@ -352,6 +352,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepository.saveWebSearchEnabled(enabled) }
     }
 
+    /** 请求诊断转储（审计 S4）：开则每次请求把完整对话内容明文写入 last_request.json
+     *  （诊断用，超长截断 256K）。默认关；改动自下一条消息生效（设置快照随链刷新） */
+    val diagDumpEnabled: StateFlow<Boolean> = settingsRepository.diagDumpEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setDiagDumpEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setDiagDumpEnabled(enabled) }
+    }
+
     // ===== Agent 会话事件桥（T5 拆入 AgentSessionController，公开流原样暴露） =====
 
     /** 工具进度文案桥：SessionState.streamingToolStatus（"正在搜索：xxx"）；未挂载 = null。 */

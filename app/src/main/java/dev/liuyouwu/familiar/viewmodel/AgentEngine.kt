@@ -61,6 +61,10 @@ internal class AgentEngineRuntime(
         @Volatile var petColor: String = "orange"
         @Volatile var familiarPacing: Boolean = true
         @Volatile var webSearchEnabled: Boolean = false
+        // 请求诊断转储（审计 S4）：默认关——开则每次请求把完整请求体明文写入
+        // last_request.json（诊断用）。随链刷新（agentLlm 是 by lazy 单例，
+        // dumpDir 供应商每次写盘时读本快照，不得构造期定型）
+        @Volatile var diagDumpEnabled: Boolean = false
         @Volatile var maxContext: Int = 4096
         @Volatile var currentModel: String = ""
         @Volatile var baseUrl: String = ""
@@ -83,6 +87,7 @@ internal class AgentEngineRuntime(
             petColor = settingsRepository.getPetColor()
             familiarPacing = settingsRepository.isFamiliarPacing()
             webSearchEnabled = settingsRepository.webSearchEnabled.first()
+            diagDumpEnabled = settingsRepository.diagDumpEnabled.first()
             maxContext = settingsRepository.getMaxContext()
             currentModel = settingsRepository.modelName.first()
             baseUrl = settingsRepository.getBaseUrl()
@@ -159,12 +164,16 @@ internal class AgentEngineRuntime(
                 baseUrl = { agentSettingsCache.baseUrl },
                 apiKey = { agentSettingsCache.apiKey },
                 provider = { agentSettingsCache.providerId },
-                // 诊断落盘目录（P1 终审挂点，P4 T8）：app 壳目录在此注入，
-                // core/llm 不再直读 FamiliarApp.instance（越层引用清除）
-                dumpDir = context.getExternalFilesDir(null),
+                // 诊断落盘目录供应商（P1 终审挂点，P4 T8 + 审计 S4 开关化）：app 壳目录
+                // 在此注入，core/llm 不再直读 FamiliarApp.instance（越层引用清除）。
+                // agentLlm 是 by lazy 单例——开关不得构造期定型，供应商每次写盘时读
+                // 设置快照（快照随链刷新，改动自下一条消息生效，无需重启）
+                dumpDir = { if (agentSettingsCache.diagDumpEnabled) context.getExternalFilesDir(null) else null },
                 // B2-L1 penalty 降级记录缝（Task 2 建缝，此处生产装配点接线）：
                 // 逐参剥除重发的原因文案落 logcat 诊断
                 onPenaltyFallback = { android.util.Log.w("LlmClient", it) },
+                // 诊断落盘失败记录缝（审计 S4，照 onPenaltyFallback 同点接线）
+                onDumpFailure = { android.util.Log.w("LlmClient", it) },
             ),
             wire = WireConverter(),
             marker = MarkerToolAdapter(),

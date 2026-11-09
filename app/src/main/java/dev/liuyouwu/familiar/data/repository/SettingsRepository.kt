@@ -82,6 +82,8 @@ class SettingsRepository(private val context: Context) {
         private val KEY_CHAT_ROOM_ADDRESS = stringPreferencesKey("chat_room_address")
         private val KEY_CLOUD_VENDOR = stringPreferencesKey("cloud_vendor")
         private val KEY_WEB_SEARCH_ENABLED = booleanPreferencesKey("web_search_enabled")
+        // 请求诊断转储（审计 S4）：last_request.json 明文落盘开关，默认关
+        private val KEY_DIAG_DUMP_ENABLED = booleanPreferencesKey("diag_dump_enabled")
 
         // ===== MCP 服务器（tools/mcp）=====
         // 服务器列表：Gson JSON 数组（tokenCipher 字段含 CryptoStore 密文，同 KEY_API_KEY_ENC 口径）
@@ -576,6 +578,19 @@ class SettingsRepository(private val context: Context) {
     suspend fun saveWebSearchEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_WEB_SEARCH_ENABLED] = enabled
+        }
+    }
+
+    /** 请求诊断转储（审计 S4）：true = 每次请求把完整对话内容明文写入
+     *  last_request.json（诊断"curl 正常、app 内退化"类问题，超长截断 256K）。
+     *  默认关——明文完整对话落盘属隐私敏感行为，须显式开启 */
+    val diagDumpEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DIAG_DUMP_ENABLED] ?: false
+    }
+
+    suspend fun setDiagDumpEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_DIAG_DUMP_ENABLED] = enabled
         }
     }
 

@@ -99,15 +99,19 @@ data class Deps(
     // 注入后返回值原样生效（返回 null = 不发送该键）——Mistral 类拒收 stream_options
     // 的后端由装配层决定，P3 接线不必重开此文件
     val streamOptionsOverride: (() -> StreamOptions?)? = null,
-    // 诊断落盘目录（P1 终审挂点，P4 T8）：last_request.json 的落盘目录——
-    // null（缺省）= 跳过落盘。此前本类直读 FamiliarApp.instance（core 层反向依赖
-    // app 壳，越层），改由装配层注入：生产 ChatViewModel 传 application.getExternalFilesDir(null)，
-    // 测试缺省 null 恒跳过（core/llm 回归纯 JVM 可测）
-    val dumpDir: java.io.File? = null,
+    // 诊断落盘目录供应商（P1 终审挂点，P4 T8 + 审计 S4 开关化）：last_request.json 的
+    // 落盘目录——**每次请求组装时求值**（生产 agentLlm 是 by lazy 单例，开关必须
+    // 每次写盘时读取，不得构造期定型）；返回 null = 跳过落盘（缺省恒 null，测试/
+    // core 层纯 JVM 可测）。生产装配注入「读设置开关 → 开则 app 外部文件目录」
+    val dumpDir: () -> java.io.File? = { null },
     // B2-L1 penalty 降级记录缝（spec §3.7）：每次剥参重发时注入方收到一条原因文案——
     // null（缺省）= no-op，JVM 单测零 android.util.Log 依赖（FamiliarMemoryStore.kt:9
     // 仓内先例"log 可注入"）；生产装配点注入 { android.util.Log.w("LlmClient", it) }
     val onPenaltyFallback: ((String) -> Unit)? = null,
+    // 诊断落盘失败记录缝（审计 S4，照 onPenaltyFallback 先例）：写盘异常时注入方收到
+    // 一条原因文案——null（缺省）= no-op；生产装配点注入 Log.w（core/llm 忌直引
+    // android.util.Log，纯 JVM 可测原则）
+    val onDumpFailure: ((String) -> Unit)? = null,
 )
 
 const val MAX_RESPONSE_CHARS = 100_000   // 逐 turn 文本上限（对照现 VM 常量）
@@ -237,13 +241,15 @@ class DefaultLlmClient(
         return chatCompletionsHttpRequest(deps.baseUrl(), deps.apiKey(), json)
     }
 
-    /** 诊断：完整请求体落盘（照抄已删 data 层旧客户端，不截断），定位"curl 正常、app 内退化"类问题。
-     *  目录由 Deps.dumpDir 注入（null = 跳过；测试缺省恒跳过，core 层不依赖 app 壳）。 */
+    /** 诊断：请求体落盘（审计 S4：开关门控 + 256K 截断），定位"curl 正常、app 内退化"类问题。
+     *  目录由 Deps.dumpDir 供应商注入——**每次调用时求值**（null = 跳过；测试缺省恒跳过，
+     *  core 层不依赖 app 壳）；失败经 onDumpFailure 注入缝上报（缺省静默，诊断路径不扰主链）。 */
     private fun dumpRequestJson(json: String) {
-        val dir = deps.dumpDir ?: return
+        val dir = deps.dumpDir() ?: return
         try {
-            java.io.File(dir, "last_request.json").writeText(json)
-        } catch (_: Exception) {
+            java.io.File(dir, "last_request.json").writeText(capDumpForDisk(json))
+        } catch (e: Exception) {
+            deps.onDumpFailure?.invoke("diag dump failed: ${e.message}")
         }
     }
 
@@ -564,6 +570,21 @@ internal fun chatCompletionsHttpRequest(baseUrl: String, apiKey: String, jsonBod
     }
     return builder.post(body).build()
 }
+
+/**
+ * 诊断转储截断（审计 S4）：last_request.json 是明文完整对话内容，超长请求体
+ * 截到 [MAX_DUMP_CHARS] 字符并附截断标记（防数 MB 附件请求把外部文件目录写爆、
+ * 也防明文无限堆积）。顶层 internal（循 [llmEndpoint]/[attachTimeContext] 先例）：
+ * DefaultLlmClient.dumpRequestJson 与 ConnectionProbe（data 层探针写盘路径）同口径共享。
+ */
+internal fun capDumpForDisk(json: String): String =
+    if (json.length > MAX_DUMP_CHARS) json.take(MAX_DUMP_CHARS) + DUMP_TRUNCATED_MARK else json
+
+/** 诊断转储字符上限：256K（[capDumpForDisk] 单点） */
+internal const val MAX_DUMP_CHARS = 256 * 1024
+
+/** 截断标记（[capDumpForDisk] 单点；测试断言钉死其后缀） */
+internal const val DUMP_TRUNCATED_MARK = "…[truncated]"
 
 /**
  * 生产 SseSource：OkHttp enqueue + `data:` 行直解 ChatResponse DTO（评审二 P2-9
