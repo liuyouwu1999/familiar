@@ -566,13 +566,8 @@ private const val PLACEHOLDER_URL = "http://localhost/"
 internal fun chatCompletionsHttpRequest(baseUrl: String, apiKey: String, jsonBody: String): Request {
     val body = jsonBody.toRequestBody("application/json".toMediaType())
     val url = llmEndpoint(baseUrl, "/v1/chat/completions")
-    val parsed = url.toHttpUrlOrNull()
-    if (parsed != null && parsed.scheme == "http" &&
-        !NetGuards.isPlaintextSafeHost(parsed.host) && apiKey.isNotBlank()
-    ) {
-        throw PlaintextKeyRefusal("http 且非局域网目标，已拒绝携带 API Key 发起请求")
-    }
-    val builder = if (parsed != null) {
+    NetGuards.guardPlaintextCredential(url, apiKey)
+    val builder = if (url.toHttpUrlOrNull() != null) {
         Request.Builder().url(url)
     } else {
         Request.Builder().url(PLACEHOLDER_URL)

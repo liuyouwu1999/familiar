@@ -2,6 +2,8 @@ package dev.liuyouwu.familiar.data.remote.api
 
 import com.google.gson.Gson
 import dev.liuyouwu.familiar.core.llm.wire.ModelsResponse
+import dev.liuyouwu.familiar.util.NetGuards
+import dev.liuyouwu.familiar.util.PlaintextKeyRefusal
 import dev.liuyouwu.familiar.util.ServerUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -57,8 +59,19 @@ class ModelsApi {
         baseUrl: String,
         apiKey: String = "",
         probe: Boolean = false
-    ): Result<ModelsResponse> = try {
-        withContext(Dispatchers.IO) {
+    ): Result<ModelsResponse> {
+        // 明文 http 拒发闸（审计 S1+S7，裁定 1 · C 出缝）：置于 try 外——拒发不是
+        // "拉取失败"，不进下方 catch 的 Log.e（JVM 单测 android.util.Log 未 mock 会
+        // 崩）；拒发转 Result.failure 沿调用方既有 onFailure 文案链透传（调用方均无
+        // try/catch，直接抛会崩 viewModelScope——连接入口的显式提示由
+        // ConnectionViewModel.testConnection 的拒发短路补齐）
+        try {
+            NetGuards.guardPlaintextCredential(ep(baseUrl, "/v1/models"), apiKey)
+        } catch (e: PlaintextKeyRefusal) {
+            return Result.failure(e)
+        }
+        return try {
+            withContext(Dispatchers.IO) {
             // 探测走更短的 probeClient；正式拉模型列表走 modelsClient（短超时，绝不挂 30 秒）
             val http = if (probe) probeClient else modelsClient
             val builder = Request.Builder()
@@ -92,9 +105,10 @@ class ModelsApi {
                 }
             }
         }
-    } catch (e: Exception) {
-        android.util.Log.e("ModelsApi", "fetchModels failed", e)
-        Result.failure(e)
+        } catch (e: Exception) {
+            android.util.Log.e("ModelsApi", "fetchModels failed", e)
+            Result.failure(e)
+        }
     }
 
     /**
@@ -104,6 +118,10 @@ class ModelsApi {
      * 命中后由 ConnectionViewModel 走正常 fetchModels 路径回填，此处结果只作信号。
      */
     suspend fun probePort(baseUrl: String, apiKey: String = ""): List<String>? = try {
+        // 明文 http 拒发闸（审计 S1+S7，裁定 1 · C 出缝）：拒发在 newCall 前，key
+        // 不出网；此处 catch-all 折叠为 null（未命中）——实际流程中 fetchModels 先
+        // 拒发短路（testConnection 拒发短路），本闸为防御纵深
+        NetGuards.guardPlaintextCredential(ep(baseUrl, "/v1/models"), apiKey)
         withContext(Dispatchers.IO) {
             val builder = Request.Builder().url(ep(baseUrl, "/v1/models")).get()
             if (apiKey.isNotBlank()) {

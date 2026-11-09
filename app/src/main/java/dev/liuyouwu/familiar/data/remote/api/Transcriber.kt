@@ -1,5 +1,6 @@
 package dev.liuyouwu.familiar.data.remote.api
 
+import dev.liuyouwu.familiar.util.NetGuards
 import dev.liuyouwu.familiar.util.ServerUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,6 +40,10 @@ class Transcriber {
         audioFile: java.io.File,
         apiKey: String = ""
     ): Result<String> = try {
+        // 明文 http 拒发闸（审计 S1+S7，裁定 1 · D 出缝）：http + 非局域网 + 非空
+        // key → 抛 PlaintextKeyRefusal（newCall 前，key 不出网），下方 catch-all 折
+        // Result.failure 沿调用方 onFailure 链透传（VoiceController 无 try/catch）
+        NetGuards.guardPlaintextCredential(ep(baseUrl, "/v1/audio/transcriptions"), apiKey)
         withContext(Dispatchers.IO) {
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)

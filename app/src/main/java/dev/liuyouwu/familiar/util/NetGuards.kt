@@ -14,6 +14,9 @@ object NetGuards {
     /**
      * 目标主机是否"明文 http 安全"（本机/局域网）：
      * - IPv4：回环 127.0.0.0/8 + RFC1918 三段（10/8、172.16/12、192.168/16）→ true；
+     * - `localhost`：回环保留名字面特判（spec「loopback → true」，大小写不敏感、
+     *   零 DNS——本机自建服务 `http://localhost:8080` 是常态写法，按域名判不安全
+     *   会误伤）；
      * - IPv6：回环 `::1` 与链路本地 fe80::/10 前缀（首组 fe80..febf）→ true；
      * - 其余（公网 IP、域名/主机名、解析不了的形态）→ false。
      * 方括号包裹（URL authority 形如 `[fe80::1]`）与大小写容错。
@@ -21,6 +24,7 @@ object NetGuards {
     fun isPlaintextSafeHost(host: String): Boolean {
         val h = host.trim().lowercase().removeSurrounding("[", "]")
         if (h.isEmpty()) return false
+        if (h == "localhost") return true   // 回环保留名（裁定 2）：字面特判，不解析
         if (h.contains(':')) {
             // IPv6 字面量（压缩形）：精确 "::1" 或 fe80:: 前缀（fe80::/10 链路本地段）
             if (h == "::1") return true
@@ -55,6 +59,23 @@ object NetGuards {
         val withScheme = if (raw.contains("://")) raw else "http://$raw"
         val parsed = withScheme.toHttpUrlOrNull() ?: return false
         return parsed.scheme == "http" && !isPlaintextSafeHost(parsed.host)
+    }
+
+    /**
+     * 明文 http 拒发闸（审计 S1+S7，裁定 1：五处带 Authorization 的请求组装出缝
+     * 共用单点——LlmClient.chatCompletionsHttpRequest / ConnectionProbe.sendChatStream /
+     * ModelsApi.fetchModels+probePort / Transcriber.transcribeAudio / McpClient）：
+     * url 为明文 http 且目标非局域网（[isPlaintextSafeHost]）且凭证非空 → 抛
+     * [PlaintextKeyRefusal]；其余（https、私网/回环 http、无凭证、解析失败）放行。
+     *
+     * @param what 文案名词：缺省 "API Key"（C/D/A/B 出缝），McpClient 传 "MCP token"
+     */
+    fun guardPlaintextCredential(url: String, credential: String, what: String = "API Key") {
+        if (credential.isBlank()) return
+        val parsed = url.toHttpUrlOrNull() ?: return
+        if (parsed.scheme == "http" && !isPlaintextSafeHost(parsed.host)) {
+            throw PlaintextKeyRefusal("http 且非局域网目标，已拒绝携带 $what 发起请求")
+        }
     }
 }
 

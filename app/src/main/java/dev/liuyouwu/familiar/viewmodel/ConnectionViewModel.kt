@@ -18,6 +18,7 @@ import okhttp3.Request
 import dev.liuyouwu.familiar.util.BackendProvider
 import dev.liuyouwu.familiar.util.CloudVendor
 import dev.liuyouwu.familiar.util.NetGuards
+import dev.liuyouwu.familiar.util.PlaintextKeyRefusal
 import dev.liuyouwu.familiar.util.ServerUrl
 import dev.liuyouwu.familiar.util.toUserLine
 import java.util.concurrent.TimeUnit
@@ -219,6 +220,8 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         _isTesting.value = true
         _connectionResult.value = null
         _serverContextInfo.value = null
+        // 明文 http 拒发首因（审计 S1+S7）：fetchModels 拒发时记录，连接流程短路提示
+        var plaintextRefusal: PlaintextKeyRefusal? = null
 
         return try {
             // 未填端口时自动探测常用端口；命中后回填完整地址，下次可直连
@@ -243,6 +246,12 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                     return false
                 }
                 val result = modelsApi.fetchModels(base + apiPath, _apiKey.value, probe = candidates.size > 1)
+                // 明文 http 拒发短路（审计 S1+S7，裁定 1）：ModelsApi 层拒发折叠为
+                // Result.failure（调用方无 try/catch，抛出会崩）——记下首因，循环后
+                // 显式告知用户而不是回退通用"没连上"文案
+                if (result.isFailure && plaintextRefusal == null) {
+                    plaintextRefusal = result.exceptionOrNull() as? PlaintextKeyRefusal
+                }
                 val models = result.getOrNull()?.data?.mapNotNull { it.id }.orEmpty()
                 if (result.isSuccess && models.isNotEmpty()) {
                     // fetch 在途期间用户改了地址：本次结果过期，无条件丢弃（不回填不落盘）
@@ -257,6 +266,14 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     return false
                 }
+            }
+            // 明文 http 拒发短路（审计 S1+S7，裁定 1）：带 key 的明文公网请求已被
+            // ModelsApi 层拒发（key 未出网）——不再继续扫端口/回退通用文案，直接把
+            // 拒发原因告诉用户（换 https 或清掉 Key）
+            plaintextRefusal?.let {
+                _isTesting.value = false
+                _connectionResult.value = ConnectionResult.Error(diagnoseError(it))
+                return false
             }
             // 二段扩展扫描（一段常用名单全空时才触发）：只对"没填端口"的本地 HTTP
             // 地址扫，并行百余端口首中即返；命中回填完整地址走同一条成功路径

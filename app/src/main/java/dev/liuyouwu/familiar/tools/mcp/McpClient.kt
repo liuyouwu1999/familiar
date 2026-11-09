@@ -3,6 +3,7 @@ package dev.liuyouwu.familiar.tools.mcp
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dev.liuyouwu.familiar.core.llm.client.readLineBounded
+import dev.liuyouwu.familiar.util.NetGuards
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -276,6 +277,12 @@ class McpClient(
 
     /** 通用头装配：版本头（协商前不带）+ 会话头（无状态不带）+ Bearer（非空才带） */
     private fun buildPostRequest(body: JsonObject): Request {
+        // 明文 http 拒发闸（审计 S1+S7，裁定 1 · E 出缝）：http + 非局域网 + 非空
+        // token → 抛 PlaintextKeyRefusal（文案区分 MCP token；newCall 前不触网）——
+        // 上游 McpToolManager.discover 折叠为该服务器的"错误:"状态，不外溢
+        NetGuards.guardPlaintextCredential(
+            endpoint.toString(), bearerToken.orEmpty(), what = "MCP token"
+        )
         val rb = Request.Builder()
             .url(endpoint)
             .header("Accept", "application/json, text/event-stream")
