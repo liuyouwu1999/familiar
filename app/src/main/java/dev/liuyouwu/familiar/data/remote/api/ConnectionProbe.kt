@@ -9,6 +9,8 @@ import dev.liuyouwu.familiar.core.llm.client.readLineBounded
 import dev.liuyouwu.familiar.core.llm.wire.*
 import dev.liuyouwu.familiar.util.ApiErrorHint
 import dev.liuyouwu.familiar.util.BackendProvider
+import dev.liuyouwu.familiar.util.NetGuards
+import dev.liuyouwu.familiar.util.PlaintextKeyRefusal
 import dev.liuyouwu.familiar.util.ServerUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -174,8 +177,18 @@ class ConnectionProbe(
         }
         val requestBody = json.toRequestBody("application/json".toMediaType())
 
+        // 明文 http 拒发闸（审计 S1+S7）：附 Authorization 前一刻——http + 非局域网
+        // 目标（NetGuards 纯字面判定）+ 非空 key → 抛 PlaintextKeyRefusal，key 绝不
+        // 明文出网；无 key 的 http 探测照常放行（体检第 4 步结果侧另附明文警示）
+        val endpoint = ep(baseUrl, "/v1/chat/completions")
+        val parsedEndpoint = endpoint.toHttpUrlOrNull()
+        if (parsedEndpoint != null && parsedEndpoint.scheme == "http" &&
+            !NetGuards.isPlaintextSafeHost(parsedEndpoint.host) && apiKey.isNotBlank()
+        ) {
+            throw PlaintextKeyRefusal("http 且非局域网目标，已拒绝携带 API Key 发起请求")
+        }
         val builder = Request.Builder()
-            .url(ep(baseUrl, "/v1/chat/completions"))
+            .url(endpoint)
             .post(requestBody)
         if (apiKey.isNotBlank()) {
             builder.addHeader("Authorization", "Bearer $apiKey")

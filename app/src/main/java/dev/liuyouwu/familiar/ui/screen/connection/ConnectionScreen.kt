@@ -353,9 +353,10 @@ fun ConnectionScreen(
                         color = if (LocalPixelDark.current) StarGold else WarnAmber
                     )
                 }
-                // 非内网 http 明文提醒：公网地址走明文 http 时 API Key 可能被嗅探，
-                // 纯本地字符串判断（私网=10.x / 192.168.x / 172.16-31.x / localhost / 127.x）
-                if (isPublicHttpUrl(serverUrl)) {
+                // 非内网 http 明文提醒：公网地址走明文 http 时 API Key 可能被嗅探——
+                // 判据收口 NetGuards.isPlaintextUnsafeUrl（审计 S1+S7，与运行时拒发同源：
+                // 私网=回环/RFC1918/::1/fe80::，无前缀按 http 处理）
+                if (dev.liuyouwu.familiar.util.NetGuards.isPlaintextUnsafeUrl(serverUrl)) {
                     Text(
                         text = "公网走 http 会暴露 API Key，建议换 https",
                         style = MaterialTheme.typography.labelSmall,
@@ -425,6 +426,16 @@ fun ConnectionScreen(
                             Icon(Icons.Default.CheckCircle, contentDescription = "连接成功", tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("找到 ${result.models.size} 个模型", color = MaterialTheme.colorScheme.primary)
+                            // 无 key 的 http 探测放行但结果附明文警示（审计 S1+S7）：
+                            // 传输无加密知情提示；带 Key 的请求在组装层被拒发（NetGuards）
+                            if (result.plaintextHttp) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "明文 http 传输（无加密）：带 API Key 的请求会被拒发，建议换 https",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (LocalPixelDark.current) StarGold else WarnAmber
+                                )
+                            }
                         }
                     }
                     is ConnectionResult.Error -> {
@@ -703,49 +714,6 @@ private fun DiagStepRow(step: DiagStep) {
             }
         }
     }
-}
-
-/**
- * 判断服务器地址是否为"明文 http 且指向非私网主机"：
- * 私网 = 10.x / 192.168.x / 172.16-31.x / localhost / 127.x，公网地址才提醒上 https。
- * 与 ViewModel 的补全行为一致：用户没写协议前缀时按 http:// 处理。
- */
-private fun isPublicHttpUrl(raw: String): Boolean {
-    val url = raw.trim()
-    if (url.isEmpty()) return false
-    val schemeAndRest = url.split("://", limit = 2)
-    val scheme = if (schemeAndRest.size == 2) schemeAndRest[0].lowercase() else "http"
-    if (scheme != "http") return false
-    // 取主机名：去路径 → 去 user info@ → IPv6 取方括号内 / 其余去端口
-    val authority = schemeAndRest.last().substringBefore('/').substringBefore('@')
-    val host = if (authority.startsWith("[")) {
-        authority.substringAfter('[').substringBefore(']')
-    } else {
-        authority.substringBefore(':')
-    }.lowercase()
-    if (host.isEmpty()) return false
-    // 精确 "::1" 或回环段前缀（"::1:"），不再把 "::10"/"::1234" 等非回环 IPv6 一并豁免（审计 P3）
-    if (host == "localhost" || host == "::1" || host.startsWith("::1:")) return false
-    // 仅当主机确实是合法点分十进制 IPv4 时才按私网段判定；
-    // 域名一律视为公网（"192.168.evil.com" 这类以私网前缀开头的域名不能靠 startsWith 放过）
-    val octets = host.split('.')
-    val isIpv4 = octets.size == 4 &&
-        octets.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() in 0..255 }
-    val isPrivate = isIpv4 && run {
-        val o1 = octets[0].toInt()
-        val o2 = octets[1].toInt()
-        when (o1) {
-            10, 127 -> true
-            192 -> o2 == 168
-            172 -> o2 in 16..31
-            // 100.64.0.0/10 CGNAT 运营商内网（家庭宽带常见管理段）与 169.254 链路本地：
-            // 明文 http 警告只该吓唬真公网（QA 2026-10-31 发现 3：100.64.x 常驻误报）
-            100 -> o2 in 64..127
-            169 -> o2 == 254
-            else -> false
-        }
-    }
-    return !isPrivate
 }
 
 /**

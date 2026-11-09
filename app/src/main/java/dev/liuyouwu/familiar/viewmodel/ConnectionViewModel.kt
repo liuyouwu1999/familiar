@@ -17,6 +17,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import dev.liuyouwu.familiar.util.BackendProvider
 import dev.liuyouwu.familiar.util.CloudVendor
+import dev.liuyouwu.familiar.util.NetGuards
 import dev.liuyouwu.familiar.util.ServerUrl
 import dev.liuyouwu.familiar.util.toUserLine
 import java.util.concurrent.TimeUnit
@@ -328,7 +329,10 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         // 落盘失败（磁盘 IO 故障）不能把"连接成功"吞成"连接失败"：
         // 网络验证已通过，配置此刻在内存里是对的，落盘异常单独存在
         runCatching { composeAndSave() }
-        _connectionResult.value = ConnectionResult.Success(models)
+        // 明文 http 且非局域网目标（审计 S1+S7）：连接结果附警示——无 key 时探测
+        // 放行，但传输无加密必须让用户知情（key 的拒发在请求组装层，见 NetGuards）
+        val plaintextHttp = NetGuards.isPlaintextUnsafeUrl(base)
+        _connectionResult.value = ConnectionResult.Success(models, plaintextHttp)
         _availableModels.value = models
         _isTesting.value = false
         // 后台预热（评审 P1-3 / spec §4.4 第 3 层时机"连接成功后"）：
@@ -538,6 +542,9 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             _serverUrl.value = normalized
             val apiPath = ServerUrl.normalizeApiPath(_apiPath.value)
             val fullBase = normalized + apiPath
+            // 明文 http 且非局域网（审计 S1+S7）：第 4 步回复测试放行（无 key）时
+            // 结果附警示——传输无加密必须知情；带 key 的拒发在请求组装层
+            val plaintextHttp = NetGuards.isPlaintextUnsafeUrl(fullBase)
 
             // 第 1 步：地址可达 —— 对 baseUrl 发轻量 GET（5 秒超时）。
             // 任何 HTTP 响应（含 404/401）都证明服务在线，路径对不对交给后面几步判断
@@ -620,7 +627,11 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                 when (event) {
                     is ProbeEvent.Error -> update(3, DiagStatus.FAIL, firstLineOf(event.message))
                     null -> update(3, DiagStatus.FAIL, "60 秒没等到回复")
-                    else -> update(3, DiagStatus.PASS, "回复流已建立（模型 $model）")
+                    else -> update(
+                        3, DiagStatus.PASS,
+                        "回复流已建立（模型 $model）" +
+                            if (plaintextHttp) "；注意：明文 http 传输（无加密）" else ""
+                    )
                 }
             } catch (e: TimeoutCancellationException) {
                 update(3, DiagStatus.FAIL, "没等到回复：模型太大加载慢会这样，稍后重试")
@@ -668,7 +679,8 @@ sealed interface LanScanState {
 }
 
 sealed class ConnectionResult {
-    data class Success(val models: List<String>) : ConnectionResult()
+    /** plaintextHttp：目标是明文 http 且非局域网（无 key 探测放行，UI 附警示文案） */
+    data class Success(val models: List<String>, val plaintextHttp: Boolean = false) : ConnectionResult()
     data class Error(val message: String) : ConnectionResult()
 }
 

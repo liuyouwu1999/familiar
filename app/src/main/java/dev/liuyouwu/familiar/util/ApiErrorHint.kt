@@ -53,6 +53,8 @@ object ApiErrorHint {
                 "解析不了主机名：检查地址拼写"
             is javax.net.ssl.SSLException ->
                 "HTTPS 证书错误：${msg.take(120)}"
+            // 明文 http 拒发（审计 S1+S7）：拒发文案即用户提示（构造点已带行动指引）
+            is PlaintextKeyRefusal -> msg
             is java.net.NoRouteToHostException, is java.net.SocketException ->
                 "服务没响应：确认服务已启动、连的是同一个网络，或重启服务"
             else -> msg

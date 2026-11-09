@@ -18,6 +18,8 @@ import dev.liuyouwu.familiar.core.llm.wire.ToolMode
 import dev.liuyouwu.familiar.core.llm.wire.ToolSpec
 import dev.liuyouwu.familiar.core.llm.wire.WireConverter
 import dev.liuyouwu.familiar.util.ApiErrorHint
+import dev.liuyouwu.familiar.util.NetGuards
+import dev.liuyouwu.familiar.util.PlaintextKeyRefusal
 import dev.liuyouwu.familiar.util.ServerUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -556,11 +558,21 @@ private const val PLACEHOLDER_URL = "http://localhost/"
  * DefaultLlmClient 的对话请求与 HttpProbeTransport 的探测请求同形——JSON 体、
  * Bearer 认证、占位 URL 兜底（baseUrl 空/非法时让可测缝仍拿到 Request 对象，
  * 生产以连接失败落 Error 事件而非崩溃）。
+ *
+ * 明文 http 拒发闸（审计 S1+S7）在此单点生效：http + 非局域网目标（[NetGuards]）
+ * + 非空 key → 附 Authorization 前一刻抛 [PlaintextKeyRefusal]，key 绝不明文
+ * 出网；无 key 的 http 探测照常放行。
  */
 internal fun chatCompletionsHttpRequest(baseUrl: String, apiKey: String, jsonBody: String): Request {
     val body = jsonBody.toRequestBody("application/json".toMediaType())
     val url = llmEndpoint(baseUrl, "/v1/chat/completions")
-    val builder = if (url.toHttpUrlOrNull() != null) {
+    val parsed = url.toHttpUrlOrNull()
+    if (parsed != null && parsed.scheme == "http" &&
+        !NetGuards.isPlaintextSafeHost(parsed.host) && apiKey.isNotBlank()
+    ) {
+        throw PlaintextKeyRefusal("http 且非局域网目标，已拒绝携带 API Key 发起请求")
+    }
+    val builder = if (parsed != null) {
         Request.Builder().url(url)
     } else {
         Request.Builder().url(PLACEHOLDER_URL)

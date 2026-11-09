@@ -44,7 +44,10 @@ import dev.liuyouwu.familiar.data.repository.SettingsRepository
 import dev.liuyouwu.familiar.tools.mcp.McpServerConfig
 import dev.liuyouwu.familiar.tools.mcp.McpToolManager
 import dev.liuyouwu.familiar.ui.theme.GrassGreen
+import dev.liuyouwu.familiar.ui.theme.LocalPixelDark
 import dev.liuyouwu.familiar.ui.theme.PaperLight
+import dev.liuyouwu.familiar.ui.theme.StarGold
+import dev.liuyouwu.familiar.ui.theme.WarnAmber
 import dev.liuyouwu.familiar.ui.theme.PixelDivider
 import dev.liuyouwu.familiar.ui.theme.PixelIconButton
 import dev.liuyouwu.familiar.ui.theme.PixelTopBar
@@ -363,6 +366,16 @@ private fun McpServerEditDialog(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
+                // 明文 http 端点警示（审计 S1+S7）：http + 非局域网目标时输入框下警示行
+                // （判据收口 NetGuards，与连接页同款；样式循两屏既有 warning 先例）
+                if (dev.liuyouwu.familiar.util.NetGuards.isPlaintextUnsafeUrl(url)) {
+                    Spacer(modifier = Modifier.size(4.dp))
+                    Text(
+                        text = "公网走 http 会暴露 Bearer token，建议换 https",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (LocalPixelDark.current) StarGold else WarnAmber
+                    )
+                }
                 Spacer(modifier = Modifier.size(8.dp))
                 OutlinedTextField(
                     value = token,
