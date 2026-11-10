@@ -15,8 +15,6 @@ indent_size = 4
 # 提供的开关豁免 @Composable 注解函数，规则对其余函数保持生效。
 ktlint_function_naming_ignore_when_annotated_with = Composable
 
-[*.{kt,kts}]
-
 [*.{yml,yaml,json,md}]
 indent_style = space
 indent_size = 2

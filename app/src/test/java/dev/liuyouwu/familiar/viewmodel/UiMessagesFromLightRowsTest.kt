@@ -152,4 +152,23 @@ class UiMessagesFromLightRowsTest {
             trimmedPrepend(listOf(lightRow(50, "user", "旧"), lightRow(60, "user", "旧2")), emptyList()),
         )
     }
+
+    // ---------------- 终审 I-1②：最小 id 直入变体（loadMoreBefore 单写者裁剪） ----------------
+
+    @Test
+    fun `trimByMinId mirrors trimmedPrepend semantics on window min id`() {
+        val prepended = listOf(lightRow(50, "user", "旧"), lightRow(120, "user", "窗口覆盖副本"))
+        assertEquals(
+            "与 trimmedPrepend 同语义：只留窗口最小 id 之外的行",
+            listOf(50L),
+            trimmedPrependByMinId(prepended, 101L)?.map { it.id },
+        )
+        assertNull("无需裁剪 → null（跳过重赋值）", trimmedPrependByMinId(listOf(lightRow(50, "user", "旧")), 101L))
+        assertNull("prepend 为空 → null", trimmedPrependByMinId(emptyList(), 101L))
+        assertEquals(
+            "窗口空（minId=null，清空会话）→ 整体退场",
+            emptyList<MessageLightRow>(),
+            trimmedPrependByMinId(prepended, null),
+        )
+    }
 }

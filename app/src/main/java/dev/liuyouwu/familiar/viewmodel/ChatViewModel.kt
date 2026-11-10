@@ -57,6 +57,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -727,11 +728,17 @@ class ChatViewModel(
         /** 在飞防重：滚顶高频触发只放一个查询进管道 */
         val loading = java.util.concurrent.atomic.AtomicBoolean(false)
 
-        /** 已探底（getMessagesBefore 空返回）：不再触库 */
+        /** 已探底（getMessagesBefore 空返回）：不再触库（IO 写 / 主线程读，终审 I-1①） */
+        @Volatile
         var exhausted = false
 
-        /** 当前已加载窗口的最早行 id（流内更新）——keyset 分页锚 */
+        /** 当前已加载窗口的最早行 id（flowOn(Default) 的 map 写 / IO 读）——keyset 分页锚（终审 I-1①） */
+        @Volatile
         var earliestId: Long? = null
+
+        /** 轻量窗口的最小行 id（流内 onEach 旁路更新）——loadMoreBefore 裁剪 prepend 的依据（终审 I-1②） */
+        @Volatile
+        var windowMinId: Long? = null
     }
 
     private val messagePagers = java.util.concurrent.ConcurrentHashMap<Long, MessagePager>()
@@ -754,15 +761,19 @@ class ChatViewModel(
         return combine(
             pager.limit.flatMapLatest { limit ->
                 chatRepository.getMessagesLight(conversationId, maxOf(MESSAGE_PAGE_WINDOW, limit))
+                    // 终审 I-1②：窗口最小 id 旁路锚（@Volatile 同 earliestId 模式）——
+                    // loadMoreBefore 据此裁剪自己的 prepend，流 transform 本体不回写
+                    .onEach { rows -> pager.windowMinId = rows.minOfOrNull { it.id } }
             },
             pager.prepend,
         ) { lightRows, prepended ->
             // 审计复审 Important-1：轻量窗口行优先——重叠 id 的 prepend 副本被 DB
             // 权威新值接管（滚顶后编辑/删除不被旧行副本遮蔽、不留幽灵气泡）；
-            // 同时把 prepend 裁剪到窗口之外（重查询覆盖后副本退场，窗口为空=
-            // 清空会话时整体退场）。裁剪触发 prepend 重发射，幂等收敛不震荡。
-            trimmedPrepend(prepended, lightRows)?.let { pager.prepend.value = it }
-            mergeLightRows(lightRows, prepended)
+            // 渲染输入先经纯裁剪（窗口覆盖副本退场，窗口为空=清空会话时整体退场）。
+            // 终审 I-1②：裁剪不再回写 prepend 流（原回写与 loadMoreBefore 的 append
+            // 存在写-写竞争），transform 零副作用——prepend 写权收敛 loadMoreBefore
+            // 单点，渲染终态与原回写版逐位一致（trim 为纯函数，去重归并兜底）。
+            mergeLightRows(lightRows, trimmedPrepend(prepended, lightRows) ?: prepended)
         }.map { rows ->
             pager.earliestId = rows.minOfOrNull { it.id }   // keyset 锚随窗口更新
             uiMessagesFromLightRows(rows)
@@ -785,7 +796,15 @@ class ChatViewModel(
                     pager.exhausted = true
                     return@launch
                 }
-                pager.prepend.value = pager.prepend.value + older
+                // 终审 I-1③ 会话活跃守卫：在飞期间切走（onConversationSwitched 已弃其
+                // pager）则弃写——渲染流已换桥，写只会落进无人收集的旧对象
+                if (previousConversationId != conversationId) return@launch
+                // 终审 I-1② append 前先裁剪自己的 prepend 再合并（trim 写权收敛本单点，
+                // 消除与 combine 回写的写-写竞争）：窗口已覆盖的副本退场，窗口空
+                // （清空会话）整体退场；append 与 trim 同一次赋值原子生效
+                val trimmed = trimmedPrependByMinId(pager.prepend.value, pager.windowMinId)
+                    ?: pager.prepend.value
+                pager.prepend.value = trimmed + older
                 pager.limit.value = pager.limit.value + MESSAGE_PAGE_WINDOW
             } finally {
                 pager.loading.set(false)
@@ -1097,7 +1116,10 @@ class ChatViewModel(
     private val summaryFlight = SingleFlight()
 
     /** 上一会话 id：切换缝判定源——LaunchedEffect(conversationId) 每次进会话都跑，
-     *  但「重进同一会话」不该触发小结，只有 prev != null && prev != newId 才补跑 prev。 */
+     *  但「重进同一会话」不该触发小结，只有 prev != null && prev != newId 才补跑 prev。
+     *  终审 I-1③ 起兼作「当前活跃会话」锚：loadMoreBefore 的 IO 写前据此判会话仍
+     *  活跃（主线程写 / IO 读，@Volatile）——值即最近一次进入的会话。 */
+    @Volatile
     private var previousConversationId: Long? = null
 
     /**
@@ -1335,9 +1357,19 @@ internal fun mergeLightRows(lightRows: List<MessageLightRow>, prepended: List<Me
 internal fun trimmedPrepend(
     prepended: List<MessageLightRow>,
     lightRows: List<MessageLightRow>,
+): List<MessageLightRow>? = trimmedPrependByMinId(prepended, lightRows.minOfOrNull { it.id })
+
+/**
+ * prepend 裁剪判定（终审 I-1②，[trimmedPrepend] 的窗口最小 id 直入变体，纯函数）：
+ * 供 loadMoreBefore（IO 线程）在无窗口行快照时按 MessagePager.windowMinId
+ * 旁路锚裁剪自己的 prepend（写权收敛单点）。语义同 [trimmedPrepend]：窗口覆盖副本
+ * 退场、窗口空（null）整体退场、无需裁剪返回 null。
+ */
+internal fun trimmedPrependByMinId(
+    prepended: List<MessageLightRow>,
+    minWindowId: Long?,
 ): List<MessageLightRow>? {
     if (prepended.isEmpty()) return null
-    val minLightId = lightRows.minOfOrNull { it.id }
-    val next = if (minLightId == null) emptyList() else prepended.filter { it.id < minLightId }
+    val next = if (minWindowId == null) emptyList() else prepended.filter { it.id < minWindowId }
     return if (next == prepended) null else next
 }
