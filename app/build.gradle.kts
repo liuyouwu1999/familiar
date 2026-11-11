@@ -26,8 +26,8 @@ android {
         applicationId = "dev.liuyouwu.familiar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.0.0"
+        versionCode = 6
+        versionName = "1.0.0.1"
         // 资源收缩（审计 P6）：仅保留中/英，第三方库携带的其余 locale 资源不打包
         resourceConfigurations += listOf("zh", "en")
         // androidTest 基建：不声明则测试 APK 落到旧版 android.test.InstrumentationTestRunner，
