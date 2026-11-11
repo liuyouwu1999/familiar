@@ -32,14 +32,21 @@ class PortScannerTest {
 
     @Test
     fun `sweep 命中端口回填完整地址与模型列表`() = runBlocking {
-        val hitUrl = "http://192.168.1.100:8081"
+        val hitUrl = "http://192.168.1.100:8082"
         val seen = mutableListOf<String>()
         val result = PortScanner.sweep(
             hostUrl = "http://192.168.1.100",
             ports = listOf(8080, 8081, 8082),
         ) { base ->
             seen.add(base)
-            if (base == hitUrl) listOf("qwen3.8-27b") else null
+            // 命中放末位并延迟：前面的未命中探测先完成，避免"命中先到取消其余探测"
+            // 的正当行为反过来吞掉本测试对 :8080 探测顺序的断言（CI 机器时序实证的 flake）
+            if (base == hitUrl) {
+                delay(100)
+                listOf("qwen3.8-27b")
+            } else {
+                null
+            }
         }
         assertEquals(hitUrl, result?.first)
         assertEquals(listOf("qwen3.8-27b"), result?.second)
