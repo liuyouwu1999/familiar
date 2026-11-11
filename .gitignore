@@ -31,7 +31,8 @@ _release/
 .zcode/
 Gemini_Generated_Image_*.png
 # 内部工程文档（审计/规划），仅本地保留
-docs/
+docs/*
+!docs/RELEASE.md
 
 # 调试产物（不入库）
 phone_db*.db*
